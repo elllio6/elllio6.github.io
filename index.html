@@ -3,222 +3,226 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FunnyImageAI — improved voice following & auto speak</title>
+  <title>FunnyImageAI — image + video voice (auto guesses)</title>
 
   <!-- TensorFlow.js + MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.9.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.2.1/dist/mobilenet.min.js"></script>
 
   <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; margin:18px; background:#f6f8fb; color:#111; }
-    header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
-    h1 { margin:0; font-size:1.1rem; }
-    .badge { background:#e8f0ff; color:#0366d6; padding:6px 10px; border-radius:999px; border:1px solid #dbeafe; }
-    .container { display:flex; gap:16px; flex-wrap:wrap; }
-    .card { background:#fff; border-radius:10px; padding:12px; box-shadow:0 1px 4px rgba(16,24,40,0.06); width:380px; }
-    .wide { flex:1 1 640px; min-width:320px; }
-    label { display:block; font-weight:600; margin:8px 0 6px 0; }
-    input[type="file"], input[type="text"], textarea, select { width:100%; padding:8px; border-radius:8px; border:1px solid #d1d5db; background:#fff; box-sizing:border-box; }
-    textarea { resize:vertical; min-height:90px; }
-    img.preview { width:100%; border-radius:8px; display:block; margin-top:8px; }
-    button { background:#0366d6; color:#fff; border:none; padding:8px 12px; border-radius:8px; cursor:pointer; }
-    button.ghost { background:transparent; color:#0366d6; border:1px solid #0366d6; }
-    button.secondary { background:#6b7280; }
-    .muted { color:#666; font-size:0.9rem; }
-    .pred-list { margin:8px 0; padding:0; list-style:none; }
-    .pred-list li { padding:6px 0; border-bottom:1px dashed #eee; }
-    .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-    .row { display:flex; gap:8px; }
-    .col { flex:1; }
-    .note { margin-top:10px; font-size:0.9rem; color:#666; }
-    .thumb { width:80px; height:60px; object-fit:cover; border-radius:6px; border:1px solid #eee; margin-right:8px; }
-    .thumb-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-    .label-badge { background:#f1f5f9; padding:4px 8px; border-radius:999px; color:#0f172a; font-weight:600; margin-right:8px; }
+    :root{--accent:#0b6df2;--muted:#6b7280;--card:#fff;--bg:#f3f6fb;--radius:10px}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;background:var(--bg);color:#0f172a}
+    .wrap{max-width:1100px;margin:18px auto;padding:16px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
+    h1{margin:0;font-size:1.25rem}
+    .muted{color:var(--muted);font-size:0.95rem}
+    .badge{background:#e9f2ff;color:var(--accent);padding:6px 10px;border-radius:999px;font-weight:600;border:1px solid #dbeafe}
+    .grid{display:grid;grid-template-columns:1fr 380px;gap:12px}
+    @media (max-width:980px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:0 6px 18px rgba(12,18,36,0.06)}
+    .uploader{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #dbeafe;border-radius:10px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff)}
+    .hidden{display:none}
+    .preview{max-width:100%;border-radius:8px;margin-top:10px}
+    label{display:block;font-weight:700;margin-bottom:6px}
+    select,input,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #e5e7eb;background:#fff;box-sizing:border-box}
+    textarea{min-height:80px;resize:vertical}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+    button{background:var(--accent);color:#fff;border:none;padding:9px 12px;border-radius:8px;cursor:pointer;font-weight:600}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+    button.secondary{background:#6b7280}
+    .pred-list{list-style:none;padding:0;margin:12px 0}
+    .pred-list li{padding:8px 6px;border-bottom:1px dashed #f1f5f9}
+    .small{font-size:0.9rem;color:var(--muted)}
+    .clip-list li{margin-bottom:6px}
+    .thumb{width:84px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #eef2ff}
+    footer{margin-top:16px;color:var(--muted);text-align:center}
+    .inline{display:inline-flex;gap:8px;align-items:center}
+    .settings-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .status { margin-left:8px; font-weight:600; color:var(--muted); font-size:0.95rem; }
   </style>
 </head>
 <body>
-  <header>
-    <div>
-      <h1>FunnyImageAI — improved voice following & auto-speak</h1>
-      <div class="muted">Upload an image and the AI will speak automatically using the selected script & system voice.</div>
-    </div>
-    <div style="text-align:right">
-      <div class="badge" id="pointsBadge">Points: 0</div>
-      <div style="margin-top:6px">
-        <label class="muted" style="font-weight:600">Auto speak on upload
-          <input id="autoSpeakToggle" type="checkbox" checked style="margin-left:8px">
-        </label>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>FunnyImageAI</h1>
+        <div class="muted">One image for guessing + one video used for voice. The app can repeat different guesses automatically.</div>
       </div>
-    </div>
-  </header>
+      <div style="text-align:right">
+        <div class="badge" id="pointsBadge">Points: 0</div>
+        <div style="margin-top:8px">
+          <label class="small muted inline">Auto speak on upload
+            <input id="autoSpeakToggle" type="checkbox" checked style="margin-left:8px">
+          </label>
+        </div>
+      </div>
+    </header>
 
-  <div class="container">
-    <div class="card wide" id="mainCard">
-      <label>Upload image (classify & speak)</label>
-      <input id="imageInput" type="file" accept="image/*">
-      <img id="preview" class="preview" alt="Preview" style="display:none">
-
-      <div id="modelStatus" class="muted" style="margin-top:8px">Loading MobileNet model (first load may take a moment)...</div>
-
-      <div id="predictionsArea" style="display:none; margin-top:12px">
-        <label>AI guesses (top 3)</label>
-        <ul id="predList" class="pred-list"></ul>
-
-        <div class="controls">
-          <button id="correctBtn">AI correct</button>
-          <button id="incorrectBtn" class="secondary">AI incorrect (save label)</button>
-          <button id="skipBtn" class="ghost">Skip</button>
+    <div class="grid">
+      <!-- Left: main interaction -->
+      <div class="card">
+        <label>Single image (for guessing)</label>
+        <div class="uploader" id="imageUploader">
+          <input id="imageInput" type="file" accept="image/*">
+          <button id="pickImageBtn" class="ghost">Choose Image</button>
+          <div class="small muted" style="margin-top:8px">Or drag & drop an image here</div>
+          <img id="imagePreview" class="preview hidden" alt="Image preview">
         </div>
 
-        <div id="labelSaveArea" style="display:none; margin-top:10px">
-          <input id="correctLabelInput" placeholder="Enter correct label (exact)">
-          <div class="row" style="margin-top:8px">
-            <button id="saveLabelBtn">Save labeled image</button>
-            <button id="cancelSaveBtn" class="ghost">Cancel</button>
+        <div id="modelStatus" class="small" style="margin-top:12px">Loading MobileNet model...</div>
+
+        <div id="predictionsArea" class="hidden">
+          <label style="margin-top:10px">AI guesses (top 3)</label>
+          <ul id="predList" class="pred-list"></ul>
+
+          <div class="controls">
+            <button id="correctBtn">AI correct</button>
+            <button id="incorrectBtn" class="secondary">AI incorrect (save label)</button>
+            <button id="speakBtn" class="ghost">Speak top guess</button>
+          </div>
+
+          <div id="labelSaveArea" class="hidden" style="margin-top:10px">
+            <input id="correctLabelInput" placeholder="Correct label (exact)">
+            <div class="controls" style="margin-top:8px">
+              <button id="saveLabelBtn">Save labeled image</button>
+              <button id="cancelSaveBtn" class="ghost">Cancel</button>
+            </div>
+          </div>
+
+          <hr style="margin:12px 0">
+
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button id="startLoopBtn" class="u-btn">Start auto-guesses</button>
+            <button id="stopLoopBtn" class="u-btn ghost" style="display:none">Stop</button>
+            <div class="settings-row">
+              <label class="small muted">Delay (sec)</label>
+              <input id="minDelay" type="number" min="1" value="2" style="width:70px">
+              <span class="small muted">to</span>
+              <input id="maxDelay" type="number" min="1" value="5" style="width:70px">
+            </div>
+            <div class="status" id="loopStatus">Stopped</div>
           </div>
         </div>
 
-        <div style="margin-top:12px">
-          <label>Voice script</label>
-          <select id="scriptSelect"></select>
-          <label style="margin-top:8px">System voice for script (optional)</label>
-          <select id="systemVoiceSelect"></select>
+        <hr style="margin:14px 0">
 
-          <div class="row" style="margin-top:8px">
-            <div class="col"><button id="speakBtn" class="ghost">Speak current top guess</button></div>
-            <div class="col"><button id="previewScriptBtn" class="ghost">Preview script</button></div>
+        <label>Saved clips</label>
+        <ul id="clipList" class="clip-list small"></ul>
+
+        <div style="margin-top:10px" class="small">Use the Voice Maker (on the right) to edit templates and include <code>{clip:video_clip}</code> or <code>{label}</code>.</div>
+      </div>
+
+      <!-- Right: video, voice maker -->
+      <div>
+        <div class="card" style="margin-bottom:12px">
+          <label>Upload video (voice source)</label>
+          <input id="videoInput" type="file" accept="video/*">
+          <video id="videoPlayer" controls style="width:100%;margin-top:8px;display:none"></video>
+
+          <div style="margin-top:8px" class="small">
+            <label>Segment to extract (seconds)</label>
+            <div style="display:flex;gap:8px">
+              <input id="segStart" placeholder="start (s)" type="number" min="0" step="0.1">
+              <input id="segEnd" placeholder="end (s)" type="number" min="0" step="0.1">
+            </div>
+            <div class="controls" style="margin-top:8px">
+              <button id="extractClipBtn">Extract clip & Match voice</button>
+              <button id="previewSegBtn" class="ghost">Preview segment</button>
+            </div>
+            <div id="extractStatus" class="small muted" style="margin-top:8px"></div>
           </div>
-          <input id="previewLabelInput" placeholder="Label to preview (e.g., cat)" style="margin-top:8px">
+        </div>
+
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <strong>Voice Maker</strong>
+            <span class="small muted">Templates use <code>{label}</code> and <code>{clip:name}</code></span>
+          </div>
+
+          <label style="margin-top:10px">Choose script</label>
+          <select id="vmScriptList"></select>
+
+          <label style="margin-top:8px">Script name</label>
+          <input id="vmName">
+
+          <label style="margin-top:8px">Templates (one per line)</label>
+          <textarea id="vmTemplates"></textarea>
+
+          <label style="margin-top:8px">Suggested pitch</label>
+          <input id="vmPitch" type="number" step="0.1" min="0" max="2" value="1.0">
+
+          <label style="margin-top:8px">Suggested rate</label>
+          <input id="vmRate" type="number" step="0.1" min="0.5" max="2" value="1.0">
+
+          <div style="margin-top:8px; display:flex; gap:8px">
+            <button id="vmSave">Save script</button>
+            <button id="vmNew" class="ghost">New</button>
+            <button id="vmDelete" class="secondary">Delete</button>
+          </div>
+
+          <div style="margin-top:12px" class="small muted">When you extract a clip from the video, the app will suggest pitch & rate values; save them with a script so TTS segments use those settings.</div>
         </div>
       </div>
     </div>
 
-    <div class="card" id="voiceCard">
-      <h3 style="margin-top:0">Voice Maker & Clips</h3>
-      <div class="muted">Create scripts with {label} and {clip:name}. Choose a system voice that the script should prefer (saved per script).</div>
-
-      <label>Choose script</label>
-      <select id="vmScriptList"></select>
-
-      <label style="margin-top:8px">Script name</label>
-      <input id="vmName">
-
-      <label style="margin-top:8px">Templates (one per line). Use {label} and {clip:name}</label>
-      <textarea id="vmTemplates"></textarea>
-
-      <label style="margin-top:8px">Speech rate (0.6 - 1.6)</label>
-      <input id="vmRate" type="number" min="0.6" max="1.6" step="0.1" value="1.0">
-
-      <label style="margin-top:8px">Preferred system voice (for this script)</label>
-      <select id="vmSystemVoiceSelect"></select>
-
-      <div class="row" style="margin-top:10px">
-        <button id="vmSave">Save script</button>
-        <button id="vmNew" class="ghost">New</button>
-        <button id="vmDelete" class="secondary">Delete</button>
-      </div>
-
-      <hr style="margin:12px 0">
-
-      <label>Upload audio clip (name it and save)</label>
-      <input id="clipFile" type="file" accept="audio/*">
-      <input id="clipName" placeholder="Clip name (e.g., greeting)">
-      <div class="row" style="margin-top:8px">
-        <button id="clipSave">Upload & Save Clip</button>
-        <button id="clipListRefresh" class="ghost">Refresh list</button>
-      </div>
-
-      <label style="margin-top:8px">Saved clips</label>
-      <ul id="clipList" class="muted"></ul>
-
-      <div style="margin-top:10px">
-        <label>Preview template</label>
-        <input id="vmPreviewLabel" placeholder="preview label (e.g., dog)">
-        <div class="row" style="margin-top:8px">
-          <button id="vmPlayPreview" class="ghost">Play preview (merged)</button>
-        </div>
-      </div>
-
-      <div class="note">Clips are stored in localStorage as data URLs (small only). Playback merges clips and TTS sequentially so it sounds like one utterance.</div>
-
-      <div style="margin-top:10px" class="muted">
-        <button id="exportDataset" class="ghost">Export dataset (JSON)</button>
-        <button id="importDataset" class="ghost">Import dataset</button>
-        <input id="importFile" type="file" accept="application/json" style="display:none">
-      </div>
-    </div>
-
-    <div class="card" id="imageLibCard">
-      <h3 style="margin-top:0">Image Library</h3>
-      <div class="muted">Upload images into your dataset, view thumbnails, assign labels, and delete items.</div>
-
-      <label>Upload image to library</label>
-      <input id="libImageFile" type="file" accept="image/*">
-      <input id="libImageLabel" placeholder="Label to assign (e.g., dog)">
-      <div class="row" style="margin-top:8px">
-        <button id="libSaveImage">Add to Library</button>
-        <button id="libRefresh" class="ghost">Refresh Library</button>
-      </div>
-
-      <div style="margin-top:12px">
-        <label>Saved images by label</label>
-        <div id="libContent" style="max-height:420px; overflow:auto; margin-top:8px;"></div>
-      </div>
-
-      <div class="note" style="margin-top:10px">Images & clips use localStorage; large files may exceed quotas. Use Export/Import to backup.</div>
-    </div>
+    <footer>
+      <div class="small muted">All processing is client-side. If extraction doesn't work, try a Chromium-based browser with <code>captureStream()</code> and <code>MediaRecorder</code>.</div>
+    </footer>
   </div>
 
 <script>
-/* Improvements in this version:
-   - Scripts can store a preferred system voice (selected in editor).
-   - During playback we use the script's preferred voice for all TTS segments.
-   - Playback is strictly sequential: each clip or TTS segment is awaited, preventing cutoffs.
-   - Auto-speak on upload is enabled by default (toggle in header).
-   - The UI exposes system voices so scripts can be made to "sound like" a chosen voice reliably.
+/* Changes in this version:
+   - Auto-guess loop: repeatedly speaks different guesses at a random delay between min and max seconds.
+   - Start/Stop controls and status indicator.
+   - Ensures guesses don't repeat until all candidates used (shuffles candidates).
+   - Stops automatically when a new image is uploaded or when user presses Stop.
+   - Retains previous features: single image, video-based clip extraction, pitch/rate suggestion, sequential merged playback.
 */
 
-// storage keys
-const STORAGE_SCRIPTS = 'funnyai_scripts_v4';
-const STORAGE_CLIPS   = 'funnyai_clips_v4';
-const STORAGE_DATASET = 'funnyai_dataset_v4';
-const STORAGE_POINTS  = 'funnyai_points_v4';
+// Storage keys & defaults
+const SCRIPTS_KEY = 'funnyai_scripts_video_v1';
+const CLIPS_KEY = 'funnyai_clips_video_v1';
+const DATASET_KEY = 'funnyai_dataset_v1';
+const POINTS_KEY = 'funnyai_points_v1';
 
-function defaultScripts() {
+function defaultScripts(){
   return {
-    "Shy": { templates: ["Um... I think this might be {label}.", "Hmm, maybe it's {label}? I'm not very sure."], rate: 1.0, preferredVoiceIndex: null },
-    "Sarcastic": { templates: ["Oh sure, definitely {label}... or not.", "{label}? Yeah, right. Maybe."], rate: 0.9, preferredVoiceIndex: null },
-    "Confident": { templates: ["I'm pretty sure this is {label}.", "This looks like {label} to me."], rate: 1.1, preferredVoiceIndex: null }
+    "Shy": { templates: ["Um... I think this might be {label}."], pitch:1.0, rate:1.0 },
+    "Sarcastic": { templates: ["{label}? Yeah, right. Maybe."], pitch:1.0, rate:0.95 },
+    "Confident": { templates: ["I'm pretty sure this is {label}."], pitch:1.0, rate:1.1 }
   };
 }
-
-function loadScripts(){ try { const raw = localStorage.getItem(STORAGE_SCRIPTS); return raw ? JSON.parse(raw) : defaultScripts(); } catch(e){ return defaultScripts(); } }
-function saveScripts(s){ localStorage.setItem(STORAGE_SCRIPTS, JSON.stringify(s)); }
-function loadClips(){ try { return JSON.parse(localStorage.getItem(STORAGE_CLIPS) || '{}'); } catch(e){ return {}; } }
-function saveClips(c){ localStorage.setItem(STORAGE_CLIPS, JSON.stringify(c)); }
-function loadDataset(){ try { return JSON.parse(localStorage.getItem(STORAGE_DATASET) || '{}'); } catch(e){ return {}; } }
-function saveDataset(d){ localStorage.setItem(STORAGE_DATASET, JSON.stringify(d)); }
-function loadPoints(){ return parseInt(localStorage.getItem(STORAGE_POINTS) || '0', 10); }
-function savePoints(n){ localStorage.setItem(STORAGE_POINTS, String(n)); updatePointsBadge(); }
+function loadScripts(){ try { const raw = localStorage.getItem(SCRIPTS_KEY); return raw ? JSON.parse(raw) : defaultScripts(); } catch(e){ return defaultScripts(); } }
+function saveScripts(s){ localStorage.setItem(SCRIPTS_KEY, JSON.stringify(s)); }
+function loadClips(){ try { return JSON.parse(localStorage.getItem(CLIPS_KEY) || '{}'); } catch(e){ return {}; } }
+function saveClips(c){ localStorage.setItem(CLIPS_KEY, JSON.stringify(c)); }
+function loadDataset(){ try { return JSON.parse(localStorage.getItem(DATASET_KEY) || '{}'); } catch(e){ return {}; } }
+function saveDataset(d){ localStorage.setItem(DATASET_KEY, JSON.stringify(d)); }
+function loadPoints(){ return parseInt(localStorage.getItem(POINTS_KEY) || '0', 10); }
+function savePoints(n){ localStorage.setItem(POINTS_KEY, String(n)); updatePointsBadge(); }
 function updatePointsBadge(){ document.getElementById('pointsBadge').textContent = 'Points: ' + loadPoints(); }
 
 // TF model
 let net = null;
 async function loadModel(){
-  const st = document.getElementById('modelStatus');
-  st.textContent = 'Loading MobileNet model (from CDN)...';
+  document.getElementById('modelStatus').textContent = 'Loading MobileNet model (from CDN)...';
   try {
     net = await mobilenet.load({version:2, alpha:1.0});
-    st.textContent = 'Model loaded.';
-  } catch(e) {
-    st.textContent = 'Model failed to load: ' + e.message;
-    console.error(e);
+    document.getElementById('modelStatus').textContent = 'Model loaded.';
+  } catch(e){
+    document.getElementById('modelStatus').textContent = 'Model failed to load: ' + (e.message || e);
   }
 }
 
-// file->Image helper
-function fileToImage(file){ return new Promise((res,rej)=>{ const url = URL.createObjectURL(file); const img = new Image(); img.onload = ()=>{ URL.revokeObjectURL(url); res(img); }; img.onerror = rej; img.src = url; });}
-async function classifyImage(imgEl){ if(!net) throw new Error('Model not loaded'); const results = await net.classify(imgEl, 3); return results.map(r=>[r.className, r.probability]); }
+// helpers
+function fileToImage(file){ return new Promise((res,rej)=>{ const url = URL.createObjectURL(file); const img = new Image(); img.onload = ()=>{ URL.revokeObjectURL(url); res(img); }; img.onerror = rej; img.src = url; }); }
+function renderPredictions(preds){
+  const ul = document.getElementById('predList'); ul.innerHTML = '';
+  preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(String(p[0]))}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// Funny badness: add common words occasionally
 function applySmallBadness(preds){
   const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
   let labels = preds.map(p=>[p[0], p[1]]);
@@ -227,272 +231,432 @@ function applySmallBadness(preds){
     labels[0] = [fake, 0.10 + Math.random()*0.08];
     for(let i=1;i<labels.length;i++) labels[i][1] = Math.max(0.01, labels[i][1]*0.6);
   } else {
-    labels = labels.map(([lbl,score])=>[lbl, Math.max(0.05, score * 0.5)]);
+    labels = labels.map(([lbl,score]) => [lbl, Math.max(0.05, score*0.5)]);
   }
-  if(Math.random() < 0.25 && labels.length>2){ const tmp = labels[1]; labels[1] = labels[2]; labels[2] = tmp; }
+  if(Math.random() < 0.25 && labels.length > 2){
+    const tmp = labels[1]; labels[1] = labels[2]; labels[2] = tmp;
+  }
   return labels;
 }
 
-// Playback: clip (Audio) and TTS (speechSynthesis) sequentially
-function playClipDataUrl(dataUrl){ return new Promise((res)=>{ const audio = new Audio(dataUrl); audio.onended = ()=> res(); audio.onerror = ()=> res(); audio.play().catch(()=>res()); }); }
-
-// speak text using a specific system voice (index) and wait for end
-function speakText(text, rate=1.0, voiceIndex=null){
-  return new Promise((res)=>{
+// Speech & clip playback (sequential)
+function playClipDataUrl(dataUrl){ return new Promise(res => { const audio = new Audio(dataUrl); audio.onended = ()=>res(); audio.onerror = ()=>res(); audio.play().catch(()=>res()); }); }
+function speakText(text, rate=1.0, pitch=1.0){
+  return new Promise(res => {
     if(!('speechSynthesis' in window)){ res(); return; }
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = rate;
-    const voices = window.speechSynthesis.getVoices() || [];
-    if(voiceIndex !== null && voiceIndex !== undefined && !isNaN(voiceIndex) && voices[voiceIndex]) {
-      utter.voice = voices[voiceIndex];
-    }
-    utter.onend = () => res();
-    utter.onerror = () => res();
-    // Do NOT cancel existing synthesis — we want sequential end events.
-    window.speechSynthesis.speak(utter);
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.rate = rate;
+    utt.pitch = pitch;
+    utt.onend = ()=>res();
+    utt.onerror = ()=>res();
+    // don't cancel global synthesis to allow queued items; but ensure we speak in sequence by awaiting.
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utt);
   });
 }
-
-// Build sequence from template tokens {clip:name} and {label}
 function buildSequenceFromTemplate(template, label){
   const seq = []; const clipRegex = /\{clip:([^}]+)\}/g;
   let lastIndex = 0; let m;
   while((m = clipRegex.exec(template)) !== null){
     const before = template.slice(lastIndex, m.index);
-    if(before.trim()){
-      const t = before.replace(/\{label\}/g, label);
-      seq.push({type:'tts', text:t});
-    }
+    if(before.trim()) seq.push({type:'tts', text: before.replace(/\{label\}/g, label)});
     const clipName = m[1].trim();
-    seq.push({type:'clip', clip:clipName});
+    seq.push({type:'clip', clip: clipName});
     lastIndex = m.index + m[0].length;
   }
   const tail = template.slice(lastIndex);
-  if(tail.trim()){
-    const t2 = tail.replace(/\{label\}/g, label);
-    seq.push({type:'tts', text:t2});
-  }
+  if(tail.trim()) seq.push({type:'tts', text: tail.replace(/\{label\}/g, label)});
   return seq;
 }
-
-async function playSequence(seq, rate=1.0, preferredVoiceIndex=null){
-  const clips = loadClips();
+async function playSequence(seq, rate=1.0, pitch=1.0){
   for(const item of seq){
     if(item.type === 'clip'){
+      const clips = loadClips();
       const dataUrl = clips[item.clip];
       if(dataUrl) await playClipDataUrl(dataUrl);
-      else await new Promise(r=>setTimeout(r,100));
+      else await new Promise(r=>setTimeout(r,120));
     } else if(item.type === 'tts'){
       const t = (item.text||'').trim();
-      if(t) await speakText(t, rate, preferredVoiceIndex);
+      if(t) await speakText(t, rate, pitch);
       else await new Promise(r=>setTimeout(r,80));
     }
   }
 }
 
-// UI wiring
+// Guess loop state and helpers
+let guessLoopRunning = false;
+let guessCandidates = [];
+let guessIndex = 0;
+let lastGuessed = null;
+
+function shuffleArray(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Build candidates from predictions + some commons to keep it funny
+function buildGuessCandidatesFromPreds(preds){
+  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
+  const labels = preds.map(p=>p[0]);
+  let combined = labels.slice();
+  // Add some commons but avoid duplicates
+  commons.forEach(c => { if(!combined.includes(c) && combined.length < Math.max(6, labels.length+3)) combined.push(c); });
+  return shuffleArray(combined);
+}
+
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+async function startGuessLoop(){
+  if(guessLoopRunning) return;
+  if(!lastPredictions || lastPredictions.length === 0){ alert('No predictions to guess from. Upload an image first.'); return; }
+  guessCandidates = buildGuessCandidatesFromPreds(lastPredictions);
+  guessIndex = 0;
+  guessLoopRunning = true;
+  document.getElementById('startLoopBtn').style.display = 'none';
+  document.getElementById('stopLoopBtn').style.display = '';
+  document.getElementById('loopStatus').textContent = 'Running';
+  // Loop
+  while(guessLoopRunning){
+    if(guessIndex >= guessCandidates.length){
+      // reshuffle for more variety
+      guessCandidates = shuffleArray(guessCandidates.slice());
+      guessIndex = 0;
+    }
+    let guessLabel = guessCandidates[guessIndex++];
+    // Ensure different from last guessed when possible
+    if(guessLabel === lastGuessed && guessCandidates.length > 1){
+      guessLabel = guessCandidates[guessIndex++ % guessCandidates.length];
+    }
+    lastGuessed = guessLabel;
+    // Build a simple template for guessing: prefer using script template if available, otherwise default
+    const scriptName = document.getElementById('vmScriptList').value;
+    const script = loadScripts()[scriptName] || null;
+    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
+    const seq = buildSequenceFromTemplate(tpl, guessLabel);
+    const pitch = script ? (script.pitch||1.0) : 1.0;
+    const rate = script ? (script.rate||1.0) : 1.0;
+    try {
+      await playSequence(seq, rate, pitch);
+    } catch(e){
+      console.warn('playSequence error', e);
+    }
+    if(!guessLoopRunning) break;
+    // random delay between minDelay and maxDelay (in seconds)
+    let minD = parseFloat(document.getElementById('minDelay').value) || 2;
+    let maxD = parseFloat(document.getElementById('maxDelay').value) || 5;
+    if(maxD < minD) { const t = minD; minD = maxD; maxD = t; }
+    const delaySec = minD + Math.random()*(maxD - minD);
+    const delayMs = Math.round(delaySec*1000);
+    // Wait but respect stop flag
+    const start = Date.now();
+    while(guessLoopRunning && Date.now() - start < delayMs){
+      await sleep(200); // check stop every 200ms
+    }
+  }
+  // loop ended cleanup
+  guessLoopRunning = false;
+  document.getElementById('startLoopBtn').style.display = '';
+  document.getElementById('stopLoopBtn').style.display = 'none';
+  document.getElementById('loopStatus').textContent = 'Stopped';
+}
+
+function stopGuessLoop(){
+  guessLoopRunning = false;
+}
+
+// Pitch estimation & audio extraction (same approach as before)
+async function estimatePitchFromAudioBuffer(audioBuffer){
+  const fs = audioBuffer.sampleRate;
+  const channelData = audioBuffer.getChannelData(0);
+  const N = Math.min(channelData.length, fs);
+  const buf = channelData.subarray(0, N);
+  let bestOffset = -1;
+  let bestCorr = 0;
+  for(let offset = 20; offset < 1000; offset++){
+    let corr = 0;
+    for(let i=0; i < N - offset; i++){
+      corr += Math.abs(buf[i] - buf[i+offset]);
+    }
+    const val = 1.0 / (1 + corr);
+    if(val > bestCorr){ bestCorr = val; bestOffset = offset; }
+  }
+  if(bestOffset <= 0) return null;
+  const fundamental = fs / bestOffset;
+  return fundamental;
+}
+
+async function extractAudioFromVideoSegment(videoElement, startSec, endSec){
+  if(!videoElement || isNaN(startSec) || isNaN(endSec) || endSec <= startSec) throw new Error('Invalid segment times');
+  if(!videoElement.captureStream) throw new Error('captureStream not supported in this browser');
+  const stream = videoElement.captureStream();
+  let recorder;
+  try {
+    recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
+  } catch(e) {
+    recorder = new MediaRecorder(stream);
+  }
+  const chunks = [];
+  recorder.ondataavailable = ev => { if(ev.data && ev.data.size) chunks.push(ev.data); };
+  return new Promise((resolve, reject) => {
+    recorder.onstop = async () => {
+      const blob = new Blob(chunks, {type: chunks[0]?.type || 'audio/webm'});
+      const arrayBuf = await blob.arrayBuffer();
+      let audioBuffer;
+      try {
+        audioBuffer = await new Promise((res, rej) => {
+          const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100 * 2, 44100);
+          ctx.decodeAudioData(arrayBuf, decoded => res(decoded), err => rej(err));
+        });
+      } catch(err){
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        audioBuffer = await actx.decodeAudioData(arrayBuf);
+      }
+      const dataUrl = URL.createObjectURL(blob);
+      resolve({blob, dataUrl, audioBuffer});
+    };
+    recorder.onerror = err => reject(err);
+    const onSeeked = () => {
+      videoElement.play();
+      recorder.start();
+      const stopHandler = () => {
+        if(videoElement.currentTime >= endSec - 0.01 || videoElement.ended){
+          videoElement.pause();
+          setTimeout(()=> {
+            try { recorder.stop(); } catch(e){ /* ignore */ }
+          }, 150);
+          videoElement.removeEventListener('timeupdate', stopHandler);
+        }
+      };
+      videoElement.addEventListener('timeupdate', stopHandler);
+    };
+    videoElement.currentTime = Math.max(0, startSec);
+    videoElement.addEventListener('seeked', function f(){
+      videoElement.removeEventListener('seeked', f);
+      onSeeked();
+    });
+  });
+}
+
+// UI wiring and event handlers
 let currentImageEl = null;
 let lastPredictions = [];
 
-function populateSystemVoiceSelect(selectEl, includeNone=true){
-  const sel = selectEl;
-  sel.innerHTML = '';
-  if(includeNone){
-    const none = document.createElement('option'); none.value = ''; none.textContent = 'Default (browser choice)'; sel.appendChild(none);
-  }
-  const voices = window.speechSynthesis.getVoices() || [];
-  voices.forEach((v,i)=> {
-    const opt = document.createElement('option'); opt.value = i; opt.textContent = v.name + (v.lang ? ' ('+v.lang+')' : '');
-    sel.appendChild(opt);
-  });
-}
-
-function populateUILists(){
+function populateUI(){
   const scripts = loadScripts();
-  const sel = document.getElementById('scriptSelect');
   const vm = document.getElementById('vmScriptList');
-  sel.innerHTML = ''; vm.innerHTML = '';
-  Object.keys(scripts).sort().forEach(n=>{
-    const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
-    const o2 = document.createElement('option'); o2.value = n; o2.textContent = n; vm.appendChild(o2);
+  vm.innerHTML = '';
+  Object.keys(scripts).sort().forEach(name => {
+    const o = document.createElement('option'); o.value = name; o.textContent = name; vm.appendChild(o);
   });
-  if(!sel.value && sel.options.length) sel.value = sel.options[0].value;
-  if(!vm.value && vm.options.length) vm.value = vm.options[0].value;
-  loadVoiceIntoEditor();
-  populateSystemVoiceSelect(document.getElementById('systemVoiceSelect'), true);
-  populateSystemVoiceSelect(document.getElementById('vmSystemVoiceSelect'), true);
+  if(vm.options.length) vm.value = vm.options[0].value;
+  loadScriptEditor();
+  refreshClipList();
+  updatePointsBadge();
 }
 
-function loadVoiceIntoEditor(){
-  const vm = document.getElementById('vmScriptList');
-  const name = vm.value;
+function loadScriptEditor(){
+  const name = document.getElementById('vmScriptList').value;
   const scripts = loadScripts();
   if(!name || !scripts[name]) return;
   const v = scripts[name];
   document.getElementById('vmName').value = name;
   document.getElementById('vmTemplates').value = (v.templates || []).join('\n');
+  document.getElementById('vmPitch').value = v.pitch || 1.0;
   document.getElementById('vmRate').value = v.rate || 1.0;
-  const pvi = (v.preferredVoiceIndex !== undefined && v.preferredVoiceIndex !== null) ? v.preferredVoiceIndex : '';
-  document.getElementById('vmSystemVoiceSelect').value = String(pvi);
 }
 
 function refreshClipList(){
-  const clips = loadClips(); const list = document.getElementById('clipList'); list.innerHTML = '';
-  Object.keys(clips).sort().forEach(k => {
+  const list = document.getElementById('clipList');
+  list.innerHTML = '';
+  const clips = loadClips();
+  const names = Object.keys(clips).sort();
+  if(names.length === 0){ list.innerHTML = '<li class="small muted">No clips saved yet.</li>'; return; }
+  names.forEach(n=>{
     const li = document.createElement('li');
-    li.innerHTML = `${escapeHtml(k)} — <a href="#" data-clip="${k}">Play</a> <a href="#" data-del="${k}" style="color:#b91c1c;margin-left:8px">Delete</a>`;
+    li.innerHTML = `<strong>${escapeHtml(n)}</strong> — <a href="#" data-play="${n}">Play</a> <a href="#" data-del="${n}" style="color:#ef4444;margin-left:8px">Delete</a>`;
     list.appendChild(li);
   });
-  list.querySelectorAll('[data-clip]').forEach(a => { a.addEventListener('click', (ev)=>{ ev.preventDefault(); const nm = a.getAttribute('data-clip'); const clips = loadClips(); const url = clips[nm]; if(url){ const audio = new Audio(url); audio.play(); } }); });
-  list.querySelectorAll('[data-del]').forEach(a => { a.addEventListener('click', (ev)=>{ ev.preventDefault(); const nm = a.getAttribute('data-del'); if(!confirm('Delete clip '+nm+'?')) return; const clips = loadClips(); delete clips[nm]; saveClips(clips); refreshClipList(); }); });
-}
-
-// Image library UI
-function refreshImageLibrary(){
-  const ds = loadDataset(); const cont = document.getElementById('libContent'); cont.innerHTML = '';
-  const labels = Object.keys(ds).sort();
-  if(labels.length === 0){ cont.innerHTML = '<div class="muted">No images saved yet.</div>'; return; }
-  labels.forEach(label => {
-    const items = ds[label];
-    const header = document.createElement('div'); header.style.marginTop='8px';
-    header.innerHTML = `<span class="label-badge">${escapeHtml(label)}</span> <a href="#" data-del-label="${label}" style="color:#b91c1c">Delete label</a> <span style="margin-left:8px" class="muted">(${items.length})</span>`;
-    cont.appendChild(header);
-    const listWrap = document.createElement('div'); listWrap.style.marginTop='6px';
-    items.forEach((it, idx) => {
-      const row = document.createElement('div'); row.className = 'thumb-row';
-      const img = document.createElement('img'); img.src = it.data; img.className = 'thumb';
-      img.title = new Date(it.t).toLocaleString();
-      const meta = document.createElement('div'); meta.style.flex='1';
-      meta.innerHTML = `<div class="muted">${new Date(it.t).toLocaleString()}</div><div class="img-actions"><a href="#" data-del="${label}#${idx}">Delete</a></div>`;
-      row.appendChild(img); row.appendChild(meta); listWrap.appendChild(row);
-    });
-    cont.appendChild(listWrap);
-  });
-  cont.querySelectorAll('[data-del]').forEach(a => {
-    a.addEventListener('click', (ev)=> {
+  list.querySelectorAll('[data-play]').forEach(a=>{
+    a.addEventListener('click', ev=>{
       ev.preventDefault();
-      const key = a.getAttribute('data-del');
-      const parts = key.split('#'); if(parts.length!==2) return;
-      const label = parts[0], idx = parseInt(parts[1],10);
-      if(!confirm('Delete this image?')) return;
-      const ds2 = loadDataset();
-      if(ds2[label]){ ds2[label].splice(idx,1); if(ds2[label].length===0) delete ds2[label]; saveDataset(ds2); refreshImageLibrary(); }
+      const k = a.getAttribute('data-play');
+      const clips = loadClips();
+      const url = clips[k];
+      if(url){ const audio = new Audio(url); audio.play(); }
     });
   });
-  cont.querySelectorAll('[data-del-label]').forEach(a => {
-    a.addEventListener('click', (ev)=> {
+  list.querySelectorAll('[data-del]').forEach(a=>{
+    a.addEventListener('click', ev=>{
       ev.preventDefault();
-      const label = a.getAttribute('data-del-label');
-      if(!confirm('Delete entire label "'+label+'"? This will remove all images under it.')) return;
-      const ds2 = loadDataset(); delete ds2[label]; saveDataset(ds2); refreshImageLibrary();
+      const k = a.getAttribute('data-del');
+      if(!confirm('Delete clip '+k+'?')) return;
+      const clips = loadClips(); delete clips[k]; saveClips(clips); refreshClipList();
     });
   });
 }
 
-// helpers
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-// initial setup and event wiring
 document.addEventListener('DOMContentLoaded', async ()=>{
-  updatePointsBadge();
-  // ensure default scripts exist
-  if(!localStorage.getItem(STORAGE_SCRIPTS)) saveScripts(defaultScripts());
-
-  // populate UI lists
-  populateUILists();
-  refreshClipList();
-  refreshImageLibrary();
-
-  // populate system voice selects when voices are available
-  const populateVoicesOnce = () => {
-    populateSystemVoiceSelect(document.getElementById('systemVoiceSelect'));
-    populateSystemVoiceSelect(document.getElementById('vmSystemVoiceSelect'));
-    // if vm editor had a stored voice index, set it
-    loadVoiceIntoEditor();
-  };
-  window.speechSynthesis.onvoiceschanged = populateVoicesOnce;
-  // also try immediate populate
-  populateVoicesOnce();
-
-  // load model (async)
+  if(!localStorage.getItem(SCRIPTS_KEY)) saveScripts(defaultScripts());
+  populateUI();
   loadModel();
 
-  // file upload classify
+  // image input
+  document.getElementById('pickImageBtn').addEventListener('click', ()=> document.getElementById('imageInput').click());
   document.getElementById('imageInput').addEventListener('change', async (ev)=>{
     const f = ev.target.files && ev.target.files[0]; if(!f) return;
     try {
-      const imgEl = await fileToImage(f); currentImageEl = imgEl;
-      const preview = document.getElementById('preview'); preview.src = imgEl.src; preview.style.display = 'block';
-      document.getElementById('predictionsArea').style.display = 'none'; document.getElementById('labelSaveArea').style.display = 'none';
+      const imgEl = await fileToImage(f);
+      currentImageEl = imgEl;
+      const ip = document.getElementById('imagePreview'); ip.src = imgEl.src; ip.classList.remove('hidden');
+      // stop loop if running (new image should reset guesses)
+      if(guessLoopRunning) stopGuessLoop();
+      // classify
+      if(!net) await loadModel();
       document.getElementById('modelStatus').textContent = 'Classifying...';
-      let preds = await classifyImage(imgEl); preds = applySmallBadness(preds); lastPredictions = preds; renderPredictions(preds);
-      document.getElementById('predictionsArea').style.display = 'block'; document.getElementById('modelStatus').textContent = 'Ready';
-
-      // Auto-speak if enabled
-      const autoSpeak = document.getElementById('autoSpeakToggle').checked;
-      if(autoSpeak){
-        const scriptName = document.getElementById('scriptSelect').value;
-        const scripts = loadScripts();
-        const script = scripts[scriptName] || null;
-        const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`;
-        const seq = buildSequenceFromTemplate(tpl, preds[0] ? preds[0][0] : 'something');
-        // Prefer script's stored preferredVoiceIndex if present, otherwise use system select
-        const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null);
-        await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10)));
+      const raw = await net.classify(imgEl, 3);
+      const preds = raw.map(r => [r.className, r.probability]);
+      lastPredictions = applySmallBadness(preds);
+      renderPredictions(lastPredictions);
+      document.getElementById('predictionsArea').classList.remove('hidden');
+      document.getElementById('modelStatus').textContent = 'Ready';
+      // auto speak if requested (single speak)
+      if(document.getElementById('autoSpeakToggle').checked){
+        const scriptName = document.getElementById('vmScriptList').value;
+        const script = loadScripts()[scriptName] || null;
+        const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
+        const seq = buildSequenceFromTemplate(tpl, lastPredictions[0] ? lastPredictions[0][0] : 'something');
+        const pitch = script ? (script.pitch||1.0) : 1.0;
+        const rate = script ? (script.rate||1.0) : 1.0;
+        await playSequence(seq, rate, pitch);
       }
-    } catch(e){ console.error(e); alert('Failed to load or classify image: ' + e.message); }
+    } catch(err){
+      alert('Image error: ' + (err.message || err));
+    }
   });
 
-  // interactions
+  // loop controls
+  document.getElementById('startLoopBtn').addEventListener('click', startGuessLoop);
+  document.getElementById('stopLoopBtn').addEventListener('click', ()=>{ stopGuessLoop(); });
+
+  // manual speak
+  document.getElementById('speakBtn').addEventListener('click', async ()=>{
+    if(!lastPredictions || !lastPredictions[0]){ alert('No prediction'); return; }
+    const top = lastPredictions[0][0];
+    const scriptName = document.getElementById('vmScriptList').value;
+    const script = loadScripts()[scriptName] || null;
+    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
+    const seq = buildSequenceFromTemplate(tpl, top);
+    const pitch = script ? (script.pitch||1.0) : 1.0;
+    const rate = script ? (script.rate||1.0) : 1.0;
+    await playSequence(seq, rate, pitch);
+  });
+
+  // correct/incorrect handlers
   document.getElementById('correctBtn').addEventListener('click', ()=>{ savePoints(loadPoints()+1); alert('Point awarded! Total: ' + loadPoints()); });
+  document.getElementById('incorrectBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').classList.remove('hidden'); });
+  document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value=''; });
+  document.getElementById('saveLabelBtn').addEventListener('click', ()=> {
+    const label = (document.getElementById('correctLabelInput').value||'').trim();
+    if(!label){ alert('Enter label'); return; }
+    if(!currentImageEl){ alert('No image'); return; }
+    const canvas = document.createElement('canvas'); canvas.width = currentImageEl.naturalWidth; canvas.height = currentImageEl.naturalHeight;
+    const ctx = canvas.getContext('2d'); ctx.drawImage(currentImageEl, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    const ds = loadDataset();
+    if(!ds[label]) ds[label] = [];
+    ds[label].push({data: dataUrl, t: Date.now()});
+    saveDataset(ds);
+    alert('Saved labeled image under: ' + label);
+    document.getElementById('labelSaveArea').classList.add('hidden');
+    document.getElementById('correctLabelInput').value = '';
+  });
 
-  document.getElementById('incorrectBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'block'; });
-  document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; });
-  document.getElementById('saveLabelBtn').addEventListener('click', ()=>{ const label = (document.getElementById('correctLabelInput').value||'').trim(); if(!label){ alert('Enter a label'); return; } saveLabeledImage(label); document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; refreshImageLibrary(); });
+  // video upload & preview
+  const videoInput = document.getElementById('videoInput');
+  const videoPlayer = document.getElementById('videoPlayer');
+  videoInput.addEventListener('change', (ev)=>{
+    const f = ev.target.files && ev.target.files[0]; if(!f) return;
+    videoPlayer.src = URL.createObjectURL(f);
+    videoPlayer.style.display = 'block';
+    document.getElementById('extractStatus').textContent = 'Video loaded. Choose start/end and click Extract.';
+  });
 
-  document.getElementById('speakBtn').addEventListener('click', async ()=>{ if(!lastPredictions || !lastPredictions[0]){ alert('No prediction yet'); return; } const top = lastPredictions[0][0]; const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, top); const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null); await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10))); });
+  document.getElementById('previewSegBtn').addEventListener('click', ()=>{
+    const s = parseFloat(document.getElementById('segStart').value || 0);
+    const e = parseFloat(document.getElementById('segEnd').value || 0);
+    if(!videoPlayer.src){ alert('No video loaded'); return; }
+    if(isNaN(s) || isNaN(e) || e<=s){ alert('Invalid times'); return; }
+    videoPlayer.currentTime = s;
+    videoPlayer.play();
+    const stopFn = ()=> { if(videoPlayer.currentTime >= e - 0.05){ videoPlayer.pause(); videoPlayer.removeEventListener('timeupdate', stopFn); } };
+    videoPlayer.addEventListener('timeupdate', stopFn);
+  });
 
-  document.getElementById('previewScriptBtn').addEventListener('click', async ()=>{ const lab = (document.getElementById('previewLabelInput').value||'cat').trim(); const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, lab); const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null); await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10))); });
+  document.getElementById('extractClipBtn').addEventListener('click', async ()=>{
+    try {
+      const s = parseFloat(document.getElementById('segStart').value || 0);
+      const e = parseFloat(document.getElementById('segEnd').value || 0);
+      if(!videoPlayer.src){ alert('Load a video first'); return; }
+      if(isNaN(s) || isNaN(e) || e<=s){ alert('Invalid start/end'); return; }
+      document.getElementById('extractStatus').textContent = 'Extracting audio from video segment...';
+      const res = await extractAudioFromVideoSegment(videoPlayer, s, e);
+      const name = 'video_clip_' + Date.now();
+      const clips = loadClips(); clips[name] = res.dataUrl; saveClips(clips);
+      refreshClipList();
+      let pitchHz = null;
+      try { pitchHz = await estimatePitchFromAudioBuffer(res.audioBuffer); } catch(err){ console.warn('Pitch estimate failed', err); }
+      let suggestedPitch = 1.0, suggestedRate = 1.0;
+      if(pitchHz && pitchHz > 0){
+        const p = Math.max(80, Math.min(400, pitchHz));
+        const norm = (p - 100) / (300 - 100);
+        suggestedPitch = 0.8 + Math.max(0, Math.min(1, norm)) * 0.7;
+        suggestedRate = 0.9 + Math.max(0, Math.min(1, norm)) * 0.3;
+      }
+      document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
+      document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
+      document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
+      const scripts = loadScripts();
+      if(!scripts['VideoVoice']){
+        scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate };
+        saveScripts(scripts);
+        populateUI();
+      }
+    } catch(err){
+      console.error(err);
+      alert('Extraction failed: ' + (err.message || err));
+      document.getElementById('extractStatus').textContent = 'Extraction failed.';
+    }
+  });
 
-  // Voice maker
-  document.getElementById('vmScriptList').addEventListener('change', loadScriptIntoEditor);
-  document.getElementById('vmSave').addEventListener('click', ()=>{ const name = (document.getElementById('vmName').value||'').trim(); if(!name){ alert('Provide a name'); return; } const raw = document.getElementById('vmTemplates').value||''; const templates = raw.split('\n').map(s=>s.trim()).filter(Boolean); if(templates.length===0){ alert('Add at least one template'); return; } const rate = parseFloat(document.getElementById('vmRate').value)||1.0; const prefVoice = document.getElementById('vmSystemVoiceSelect').value || null; const scripts = loadScripts(); scripts[name] = { templates, rate, preferredVoiceIndex: prefVoice === '' ? null : parseInt(prefVoice,10) }; saveScripts(scripts); populateUILists(); alert('Saved script: ' + name); });
-  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value = 'NewVoice'; document.getElementById('vmTemplates').value = 'I think this is {label}.'; document.getElementById('vmRate').value = 1.0; document.getElementById('vmSystemVoiceSelect').value = ''; });
-  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateUILists(); refreshClipList(); refreshImageLibrary(); alert('Deleted ' + name); });
+  // voice maker handlers
+  document.getElementById('vmScriptList').addEventListener('change', loadScriptEditor);
+  document.getElementById('vmSave').addEventListener('click', ()=>{
+    const name = (document.getElementById('vmName').value || '').trim();
+    if(!name){ alert('Provide name'); return; }
+    const templates = (document.getElementById('vmTemplates').value || '').split('\n').map(s=>s.trim()).filter(Boolean);
+    if(templates.length === 0){ alert('Add at least one template line'); return; }
+    const pitch = parseFloat(document.getElementById('vmPitch').value) || 1.0;
+    const rate = parseFloat(document.getElementById('vmRate').value) || 1.0;
+    const scripts = loadScripts(); scripts[name] = { templates, pitch, rate }; saveScripts(scripts); populateUI(); alert('Saved script: ' + name);
+  });
+  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value = 'NewScript'; document.getElementById('vmTemplates').value = 'I think this is {label}.'; document.getElementById('vmPitch').value = '1.0'; document.getElementById('vmRate').value ='1.0'; });
+  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateUI(); alert('Deleted ' + name); });
 
-  // Clip upload
-  document.getElementById('clipSave').addEventListener('click', ()=>{ const f = document.getElementById('clipFile').files && document.getElementById('clipFile').files[0]; const name = (document.getElementById('clipName').value||'').trim(); if(!f){ alert('Choose an audio file'); return; } if(!name){ alert('Provide clip name'); return; } const reader = new FileReader(); reader.onload = (e) => { const dataUrl = e.target.result; const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipList(); document.getElementById('clipFile').value = ''; document.getElementById('clipName').value = ''; alert('Saved clip: ' + name); }; reader.readAsDataURL(f); });
-  document.getElementById('clipListRefresh').addEventListener('click', refreshClipList);
-
-  document.getElementById('vmPlayPreview').addEventListener('click', async ()=>{ const name = (document.getElementById('vmScriptList').value||''); const scripts = loadScripts(); const script = scripts[name] || null; if(!script){ alert('Choose a script'); return; } const previewLabel = (document.getElementById('vmPreviewLabel').value||'cat').trim(); const tpl = script.templates[Math.floor(Math.random()*script.templates.length)]; const seq = buildSequenceFromTemplate(tpl, previewLabel); await playSequence(seq, script.rate || 1.0, script.preferredVoiceIndex===null?null:script.preferredVoiceIndex); });
-
-  // dataset export/import
-  document.getElementById('exportDataset').addEventListener('click', ()=>{ const ds = loadDataset(); const blob = new Blob([JSON.stringify(ds)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'funnyai_dataset.json'; a.click(); setTimeout(()=> URL.revokeObjectURL(url), 5000); });
-  document.getElementById('importDataset').addEventListener('click', ()=> document.getElementById('importFile').click());
-  document.getElementById('importFile').addEventListener('change', (ev)=>{ const f = ev.target.files && ev.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { try { const obj = JSON.parse(e.target.result); const ds = loadDataset(); Object.keys(obj).forEach(k => { if(!ds[k]) ds[k]=[]; ds[k]=ds[k].concat(obj[k]); }); saveDataset(ds); refreshImageLibrary(); alert('Imported dataset (merged)'); } catch(err){ alert('Invalid JSON file'); } }; r.readAsText(f); });
-
-  // image library upload
-  document.getElementById('libSaveImage').addEventListener('click', ()=>{ const f = document.getElementById('libImageFile').files && document.getElementById('libImageFile').files[0]; const label = (document.getElementById('libImageLabel').value||'').trim(); if(!f){ alert('Choose an image file'); return; } if(!label){ alert('Provide a label'); return; } const reader = new FileReader(); reader.onload = e => { const dataUrl = e.target.result; const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds); document.getElementById('libImageFile').value=''; document.getElementById('libImageLabel').value=''; refreshImageLibrary(); alert('Added image to library under: ' + label); }; reader.readAsDataURL(f); });
-  document.getElementById('libRefresh').addEventListener('click', refreshImageLibrary);
+  // initial populate
+  populateUI();
 });
 
-// render predictions list
-function renderPredictions(preds){
-  const ul = document.getElementById('predList'); ul.innerHTML = '';
-  preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(p[0])}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); });
+// Helper: build candidates from preds for loop (no repeats until exhausted)
+function buildGuessCandidatesFromPreds(preds){
+  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
+  const labels = preds.map(p=>p[0]);
+  let combined = labels.slice();
+  commons.forEach(c => { if(!combined.includes(c) && combined.length < Math.max(6, labels.length+3)) combined.push(c); });
+  return shuffleArray(combined);
 }
-
-// save labeled image from main flow
-function saveLabeledImage(label){
-  if(!currentImageEl){ alert('No image loaded.'); return; }
-  const canvas = document.createElement('canvas'); canvas.width = currentImageEl.naturalWidth; canvas.height = currentImageEl.naturalHeight;
-  const ctx = canvas.getContext('2d'); ctx.drawImage(currentImageEl, 0, 0);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds);
-}
-
-// ensure defaults exist
-(function ensureDefaults(){ if(!localStorage.getItem(STORAGE_SCRIPTS)) saveScripts(defaultScripts()); })();
 
 </script>
 </body>
