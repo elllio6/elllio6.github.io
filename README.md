@@ -1,10 +1,19 @@
 ```markdown
-# Image Guess & Train — Play-to-Teach AI (Streamlit) — Voice + "Bad at Start"
+# FunnyImageAI — Always a little bad (Streamlit)
 
-This version adds:
-- Text-to-speech: the app will speak the AI's top guess (best-effort) using gTTS.
-- Intentional poor initial performance: while the player is at level 1 the AI will often make wrong or low-confidence guesses to encourage playing puzzles and teaching it.
-- When you solve puzzles and fine-tune the model, the AI becomes better (because it uses your data).
+Overview
+- Upload images and the AI will try to guess them.
+- The AI is intentionally always "a little bad" (funny behavior) — no puzzles or leveling.
+- The app has three voice scripts (Shy, Sarcastic, Confident) that speak the top guess.
+- You can mark "AI correct" to get points, or "AI incorrect" and save a labeled image to your dataset.
+- Optionally fine-tune a small model on your collected images; note the AI will still keep a small playful "badness" after training (per your request).
+
+Files
+- `streamlit_app.py` — main Streamlit UI (no puzzles, always slightly bad).
+- `model_utils.py` — predictor, saving images, fine-tuning logic.
+- `user_data/` — where labeled images are stored (created automatically).
+- `user_model.h5` and `classes.json` — saved model & mapping after fine-tuning.
+- `requirements.txt` — Python packages.
 
 Requirements
 - Python 3.8+
@@ -13,29 +22,21 @@ Requirements
 pip install -r requirements.txt
 ```
 
-Notes about TTS
-- This app uses gTTS (Google Text-to-Speech) to create short mp3 audio for the AI's spoken guess.
-- gTTS needs internet access to work. If gTTS isn't available the app will still function but without voice.
-
 Run
 ```
 streamlit run streamlit_app.py
 ```
 
-How the "bad at start" behavior works
-- While you are at level 1 the predictor intentionally adds noise:
-  - Replaces the top guess with a random common object with high probability.
-  - Lowers confidences to make the AI sound uncertain.
-- When you collect labeled images and fine-tune (by solving puzzles and saving the labeled images), the AI will use your custom model and stop being intentionally bad.
+Audio notes
+- The app supports `pyttsx3` (offline) and `gTTS` (online). Pick a backend in the sidebar.
+- If no TTS backend is available the UI still works (text-only).
 
-Files
-- `streamlit_app.py` — main Streamlit UI (now with voice).
-- `model_utils.py` — prediction, saving images, and fine-tuning logic (predictor accepts player_level).
-- `user_data/` — where labeled images are stored.
-- `user_model.h5` and `classes.json` — saved model & mapping after fine-tuning.
+Important behavior choices you requested
+- Puzzles removed entirely.
+- The AI is always slightly "bad" for a fun / humorous experience (applies to both fallback ImageNet and a fine-tuned user model).
 
-Next ideas
-- Add an option to toggle "make AI intentionally bad" (for practice).
-- Use a local TTS fallback (pyttsx3) for offline speech.
-- Make the "badness" scale gradually with levels rather than just level 1.
+Next ideas (optional)
+- Add an intensity slider to control how "bad" the AI remains.
+- Add more voice scripts or allow custom phrases.
+- Add export/import for dataset and model.
 ```
