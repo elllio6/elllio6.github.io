@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FunnyImageAI — with custom audio clips + Image Library</title>
+  <title>FunnyImageAI — improved voice following & auto speak</title>
 
   <!-- TensorFlow.js + MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.9.0/dist/tf.min.js"></script>
@@ -34,24 +34,27 @@
     .thumb { width:80px; height:60px; object-fit:cover; border-radius:6px; border:1px solid #eee; margin-right:8px; }
     .thumb-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
     .label-badge { background:#f1f5f9; padding:4px 8px; border-radius:999px; color:#0f172a; font-weight:600; margin-right:8px; }
-    .img-actions a { margin-left:8px; color:#b91c1c; text-decoration:none; font-size:0.9rem; }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>FunnyImageAI — custom audio clips + Image Library</h1>
-      <div class="muted">Upload clips, create voice templates, upload/manage images, and hear merged playback.</div>
+      <h1>FunnyImageAI — improved voice following & auto-speak</h1>
+      <div class="muted">Upload an image and the AI will speak automatically using the selected script & system voice.</div>
     </div>
     <div style="text-align:right">
       <div class="badge" id="pointsBadge">Points: 0</div>
-      <div class="muted" style="margin-top:6px">Local-only data (browser storage)</div>
+      <div style="margin-top:6px">
+        <label class="muted" style="font-weight:600">Auto speak on upload
+          <input id="autoSpeakToggle" type="checkbox" checked style="margin-left:8px">
+        </label>
+      </div>
     </div>
   </header>
 
   <div class="container">
     <div class="card wide" id="mainCard">
-      <label>Upload image (for quick classify & speak)</label>
+      <label>Upload image (classify & speak)</label>
       <input id="imageInput" type="file" accept="image/*">
       <img id="preview" class="preview" alt="Preview" style="display:none">
 
@@ -78,8 +81,11 @@
         <div style="margin-top:12px">
           <label>Voice script</label>
           <select id="scriptSelect"></select>
+          <label style="margin-top:8px">System voice for script (optional)</label>
+          <select id="systemVoiceSelect"></select>
+
           <div class="row" style="margin-top:8px">
-            <div class="col"><button id="speakBtn" class="ghost">Speak top guess (merged)</button></div>
+            <div class="col"><button id="speakBtn" class="ghost">Speak current top guess</button></div>
             <div class="col"><button id="previewScriptBtn" class="ghost">Preview script</button></div>
           </div>
           <input id="previewLabelInput" placeholder="Label to preview (e.g., cat)" style="margin-top:8px">
@@ -89,7 +95,7 @@
 
     <div class="card" id="voiceCard">
       <h3 style="margin-top:0">Voice Maker & Clips</h3>
-      <div class="muted">Create scripts with tokens: {label} and {clip:name}. Upload clips below and reference them in templates.</div>
+      <div class="muted">Create scripts with {label} and {clip:name}. Choose a system voice that the script should prefer (saved per script).</div>
 
       <label>Choose script</label>
       <select id="vmScriptList"></select>
@@ -102,6 +108,9 @@
 
       <label style="margin-top:8px">Speech rate (0.6 - 1.6)</label>
       <input id="vmRate" type="number" min="0.6" max="1.6" step="0.1" value="1.0">
+
+      <label style="margin-top:8px">Preferred system voice (for this script)</label>
+      <select id="vmSystemVoiceSelect"></select>
 
       <div class="row" style="margin-top:10px">
         <button id="vmSave">Save script</button>
@@ -130,7 +139,7 @@
         </div>
       </div>
 
-      <div class="note">Clips are stored in your browser localStorage as small data URLs (watch size limits). Playback merges clips and TTS sequentially.</div>
+      <div class="note">Clips are stored in localStorage as data URLs (small only). Playback merges clips and TTS sequentially so it sounds like one utterance.</div>
 
       <div style="margin-top:10px" class="muted">
         <button id="exportDataset" class="ghost">Export dataset (JSON)</button>
@@ -141,7 +150,7 @@
 
     <div class="card" id="imageLibCard">
       <h3 style="margin-top:0">Image Library</h3>
-      <div class="muted">Upload images directly into your dataset, view thumbnails, assign labels, and delete images or entire labels.</div>
+      <div class="muted">Upload images into your dataset, view thumbnails, assign labels, and delete items.</div>
 
       <label>Upload image to library</label>
       <input id="libImageFile" type="file" accept="image/*">
@@ -156,28 +165,30 @@
         <div id="libContent" style="max-height:420px; overflow:auto; margin-top:8px;"></div>
       </div>
 
-      <div class="note" style="margin-top:10px">Images are stored in localStorage as data URLs (watch size limits). Use Export/Import to backup.</div>
+      <div class="note" style="margin-top:10px">Images & clips use localStorage; large files may exceed quotas. Use Export/Import to backup.</div>
     </div>
   </div>
 
 <script>
-/* Extended client-side app:
-   - MobileNet classification
-   - Voice scripts and clips with merged playback
-   - Image Library: upload/manage images in local dataset (thumbnails, delete)
+/* Improvements in this version:
+   - Scripts can store a preferred system voice (selected in editor).
+   - During playback we use the script's preferred voice for all TTS segments.
+   - Playback is strictly sequential: each clip or TTS segment is awaited, preventing cutoffs.
+   - Auto-speak on upload is enabled by default (toggle in header).
+   - The UI exposes system voices so scripts can be made to "sound like" a chosen voice reliably.
 */
 
 // storage keys
-const STORAGE_SCRIPTS = 'funnyai_scripts_v3';
-const STORAGE_CLIPS   = 'funnyai_clips_v3';
-const STORAGE_DATASET = 'funnyai_dataset_v3';
-const STORAGE_POINTS  = 'funnyai_points_v3';
+const STORAGE_SCRIPTS = 'funnyai_scripts_v4';
+const STORAGE_CLIPS   = 'funnyai_clips_v4';
+const STORAGE_DATASET = 'funnyai_dataset_v4';
+const STORAGE_POINTS  = 'funnyai_points_v4';
 
 function defaultScripts() {
   return {
-    "Shy": { templates: ["{clip:greeting} Um... I think this might be {label}.", "Hmm, maybe it's {label}? I'm not very sure."], rate: 1.0 },
-    "Sarcastic": { templates: ["Oh sure, definitely {label}... or not.", "{clip:snark} {label}? Yeah, right."], rate: 0.9 },
-    "Confident": { templates: ["I'm pretty sure this is {label}.", "This looks like {label} to me."], rate: 1.1 }
+    "Shy": { templates: ["Um... I think this might be {label}.", "Hmm, maybe it's {label}? I'm not very sure."], rate: 1.0, preferredVoiceIndex: null },
+    "Sarcastic": { templates: ["Oh sure, definitely {label}... or not.", "{label}? Yeah, right. Maybe."], rate: 0.9, preferredVoiceIndex: null },
+    "Confident": { templates: ["I'm pretty sure this is {label}.", "This looks like {label} to me."], rate: 1.1, preferredVoiceIndex: null }
   };
 }
 
@@ -205,6 +216,7 @@ async function loadModel(){
   }
 }
 
+// file->Image helper
 function fileToImage(file){ return new Promise((res,rej)=>{ const url = URL.createObjectURL(file); const img = new Image(); img.onload = ()=>{ URL.revokeObjectURL(url); res(img); }; img.onerror = rej; img.src = url; });}
 async function classifyImage(imgEl){ if(!net) throw new Error('Model not loaded'); const results = await net.classify(imgEl, 3); return results.map(r=>[r.className, r.probability]); }
 function applySmallBadness(preds){
@@ -217,35 +229,64 @@ function applySmallBadness(preds){
   } else {
     labels = labels.map(([lbl,score])=>[lbl, Math.max(0.05, score * 0.5)]);
   }
-  if(Math.random() < 0.25 && labels.length>2){ const tmp = labels[1]; labels[1]=labels[2]; labels[2]=tmp; }
+  if(Math.random() < 0.25 && labels.length>2){ const tmp = labels[1]; labels[1] = labels[2]; labels[2] = tmp; }
   return labels;
 }
 
-// Playback helpers
-function playClipDataUrl(dataUrl){ return new Promise((res)=>{ const audio = new Audio(dataUrl); audio.onended = ()=> res(); audio.onerror = ()=> res(); audio.play().catch(()=>res()); });}
-function speakText(text, rate=1.0){ return new Promise((res)=>{ if(!('speechSynthesis' in window)){ res(); return; } const utter = new SpeechSynthesisUtterance(text); utter.rate = rate; utter.onend = ()=> res(); utter.onerror = ()=> res(); window.speechSynthesis.cancel(); window.speechSynthesis.speak(utter); });}
+// Playback: clip (Audio) and TTS (speechSynthesis) sequentially
+function playClipDataUrl(dataUrl){ return new Promise((res)=>{ const audio = new Audio(dataUrl); audio.onended = ()=> res(); audio.onerror = ()=> res(); audio.play().catch(()=>res()); }); }
 
-// Build play sequence from template and label. Template tokens: {clip:name} and plain text including {label}
-function buildSequenceFromTemplate(template, label, scripts, clips){
+// speak text using a specific system voice (index) and wait for end
+function speakText(text, rate=1.0, voiceIndex=null){
+  return new Promise((res)=>{
+    if(!('speechSynthesis' in window)){ res(); return; }
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = rate;
+    const voices = window.speechSynthesis.getVoices() || [];
+    if(voiceIndex !== null && voiceIndex !== undefined && !isNaN(voiceIndex) && voices[voiceIndex]) {
+      utter.voice = voices[voiceIndex];
+    }
+    utter.onend = () => res();
+    utter.onerror = () => res();
+    // Do NOT cancel existing synthesis — we want sequential end events.
+    window.speechSynthesis.speak(utter);
+  });
+}
+
+// Build sequence from template tokens {clip:name} and {label}
+function buildSequenceFromTemplate(template, label){
   const seq = []; const clipRegex = /\{clip:([^}]+)\}/g;
   let lastIndex = 0; let m;
   while((m = clipRegex.exec(template)) !== null){
     const before = template.slice(lastIndex, m.index);
-    if(before.trim()){ const t = before.replace(/\{label\}/g, label); seq.push({type:'tts', text:t}); }
+    if(before.trim()){
+      const t = before.replace(/\{label\}/g, label);
+      seq.push({type:'tts', text:t});
+    }
     const clipName = m[1].trim();
-    if(clips[clipName]) seq.push({type:'clip', clip:clipName});
-    else seq.push({type:'tts', text:''});
+    seq.push({type:'clip', clip:clipName});
     lastIndex = m.index + m[0].length;
   }
   const tail = template.slice(lastIndex);
-  if(tail.trim()){ const t2 = tail.replace(/\{label\}/g, label); seq.push({type:'tts', text:t2}); }
+  if(tail.trim()){
+    const t2 = tail.replace(/\{label\}/g, label);
+    seq.push({type:'tts', text:t2});
+  }
   return seq;
 }
-async function playSequence(seq, rate=1.0){
+
+async function playSequence(seq, rate=1.0, preferredVoiceIndex=null){
   const clips = loadClips();
   for(const item of seq){
-    if(item.type === 'clip'){ const dataUrl = clips[item.clip]; if(dataUrl) await playClipDataUrl(dataUrl); else await new Promise(r=>setTimeout(r,120)); }
-    else if(item.type === 'tts'){ const t = (item.text||'').trim(); if(t) await speakText(t, rate); else await new Promise(r=>setTimeout(r,80)); }
+    if(item.type === 'clip'){
+      const dataUrl = clips[item.clip];
+      if(dataUrl) await playClipDataUrl(dataUrl);
+      else await new Promise(r=>setTimeout(r,100));
+    } else if(item.type === 'tts'){
+      const t = (item.text||'').trim();
+      if(t) await speakText(t, rate, preferredVoiceIndex);
+      else await new Promise(r=>setTimeout(r,80));
+    }
   }
 }
 
@@ -253,77 +294,48 @@ async function playSequence(seq, rate=1.0){
 let currentImageEl = null;
 let lastPredictions = [];
 
-document.addEventListener('DOMContentLoaded', async ()=>{
-  updatePointsBadge();
-  populateScriptSelect();
-  refreshClipList();
-  refreshImageLibrary();
-  loadModel();
-
-  // main classify input
-  document.getElementById('imageInput').addEventListener('change', async (ev)=>{
-    const f = ev.target.files && ev.target.files[0]; if(!f) return;
-    try {
-      const imgEl = await fileToImage(f); currentImageEl = imgEl;
-      const preview = document.getElementById('preview'); preview.src = imgEl.src; preview.style.display = 'block';
-      document.getElementById('predictionsArea').style.display = 'none'; document.getElementById('labelSaveArea').style.display = 'none';
-      document.getElementById('modelStatus').textContent = 'Classifying...';
-      let preds = await classifyImage(imgEl); preds = applySmallBadness(preds); lastPredictions = preds; renderPredictions(preds);
-      document.getElementById('predictionsArea').style.display = 'block'; document.getElementById('modelStatus').textContent = 'Ready';
-      // auto-play merged script
-      const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null;
-      const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`;
-      const seq = buildSequenceFromTemplate(tpl, preds[0] ? preds[0][0] : 'something', scripts, loadClips());
-      playSequence(seq, script ? script.rate||1.0 : 1.0);
-    } catch(e){ console.error(e); alert('Failed to load or classify image: ' + e.message); }
+function populateSystemVoiceSelect(selectEl, includeNone=true){
+  const sel = selectEl;
+  sel.innerHTML = '';
+  if(includeNone){
+    const none = document.createElement('option'); none.value = ''; none.textContent = 'Default (browser choice)'; sel.appendChild(none);
+  }
+  const voices = window.speechSynthesis.getVoices() || [];
+  voices.forEach((v,i)=> {
+    const opt = document.createElement('option'); opt.value = i; opt.textContent = v.name + (v.lang ? ' ('+v.lang+')' : '');
+    sel.appendChild(opt);
   });
-
-  // interactions
-  document.getElementById('correctBtn').addEventListener('click', ()=>{ savePoints(loadPoints()+1); alert('Point awarded! Total: ' + loadPoints()); });
-
-  document.getElementById('incorrectBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'block'; });
-  document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; });
-  document.getElementById('saveLabelBtn').addEventListener('click', ()=>{ const label = (document.getElementById('correctLabelInput').value||'').trim(); if(!label){ alert('Enter a label'); return; } saveLabeledImage(label); document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; refreshImageLibrary(); });
-
-  document.getElementById('speakBtn').addEventListener('click', async ()=>{ if(!lastPredictions || !lastPredictions[0]){ alert('No prediction yet.'); return; } const top = lastPredictions[0][0]; const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, top, scripts, loadClips()); await playSequence(seq, script ? script.rate||1.0 : 1.0); });
-
-  document.getElementById('previewScriptBtn').addEventListener('click', async ()=>{ const lab = (document.getElementById('previewLabelInput').value||'cat').trim(); const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, lab, scripts, loadClips()); await playSequence(seq, script ? script.rate||1.0 : 1.0); });
-
-  // Voice Maker UI
-  document.getElementById('vmScriptList').addEventListener('change', loadScriptIntoEditor);
-  document.getElementById('vmSave').addEventListener('click', ()=>{ const name = (document.getElementById('vmName').value||'').trim(); if(!name){ alert('Provide a name'); return; } const raw = document.getElementById('vmTemplates').value||''; const templates = raw.split('\n').map(s=>s.trim()).filter(Boolean); if(templates.length===0){ alert('Add at least one template'); return; } const rate = parseFloat(document.getElementById('vmRate').value)||1.0; const scripts = loadScripts(); scripts[name] = { templates, rate }; saveScripts(scripts); populateScriptSelect(); alert('Saved script: ' + name); });
-  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value = 'NewVoice'; document.getElementById('vmTemplates').value = 'I think this is {label}.'; document.getElementById('vmRate').value = 1.0; });
-  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateScriptSelect(); refreshScriptEditor(); alert('Deleted ' + name); });
-
-  // Clip upload
-  document.getElementById('clipSave').addEventListener('click', ()=>{ const f = document.getElementById('clipFile').files && document.getElementById('clipFile').files[0]; const name = (document.getElementById('clipName').value||'').trim(); if(!f){ alert('Choose an audio file'); return; } if(!name){ alert('Provide clip name'); return; } const reader = new FileReader(); reader.onload = (e)=>{ const dataUrl = e.target.result; const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipList(); document.getElementById('clipFile').value=''; document.getElementById('clipName').value=''; alert('Saved clip: ' + name); }; reader.readAsDataURL(f); });
-  document.getElementById('clipListRefresh').addEventListener('click', refreshClipList);
-
-  document.getElementById('vmPlayPreview').addEventListener('click', async ()=>{ const name = (document.getElementById('vmScriptList').value||''); const scripts = loadScripts(); const script = scripts[name] || null; if(!script){ alert('Choose a script'); return; } const previewLabel = (document.getElementById('vmPreviewLabel').value||'cat').trim(); const tpl = script.templates[Math.floor(Math.random()*script.templates.length)]; const seq = buildSequenceFromTemplate(tpl, previewLabel, scripts, loadClips()); await playSequence(seq, script.rate || 1.0); });
-
-  // export/import dataset
-  document.getElementById('exportDataset').addEventListener('click', ()=>{ const ds = loadDataset(); const blob = new Blob([JSON.stringify(ds)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'funnyai_dataset.json'; a.click(); setTimeout(()=> URL.revokeObjectURL(url), 5000); });
-  document.getElementById('importDataset').addEventListener('click', ()=> document.getElementById('importFile').click());
-  document.getElementById('importFile').addEventListener('change', (ev)=>{ const f = ev.target.files && ev.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { try { const obj = JSON.parse(e.target.result); const ds = loadDataset(); Object.keys(obj).forEach(k => { if(!ds[k]) ds[k]=[]; ds[k]=ds[k].concat(obj[k]); }); saveDataset(ds); refreshImageLibrary(); alert('Imported dataset (merged)'); } catch(err){ alert('Invalid JSON file'); } }; r.readAsText(f); });
-
-  // Image Library: upload directly into dataset
-  document.getElementById('libSaveImage').addEventListener('click', ()=>{ const f = document.getElementById('libImageFile').files && document.getElementById('libImageFile').files[0]; const label = (document.getElementById('libImageLabel').value||'').trim(); if(!f){ alert('Choose an image file'); return; } if(!label){ alert('Provide a label'); return; } const reader = new FileReader(); reader.onload = e => { const dataUrl = e.target.result; const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds); document.getElementById('libImageFile').value=''; document.getElementById('libImageLabel').value=''; refreshImageLibrary(); alert('Added image to library under: ' + label); }; reader.readAsDataURL(f); });
-  document.getElementById('libRefresh').addEventListener('click', refreshImageLibrary);
-});
-
-// render predictions
-function renderPredictions(preds){ const ul = document.getElementById('predList'); ul.innerHTML = ''; preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(p[0])}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); }); }
-
-// save labeled image from main classify flow
-function saveLabeledImage(label){
-  if(!currentImageEl){ alert('No image loaded.'); return; }
-  const canvas = document.createElement('canvas'); canvas.width = currentImageEl.naturalWidth; canvas.height = currentImageEl.naturalHeight;
-  const ctx = canvas.getContext('2d'); ctx.drawImage(currentImageEl, 0, 0);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-  const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds);
 }
 
-// Clip list UI
+function populateUILists(){
+  const scripts = loadScripts();
+  const sel = document.getElementById('scriptSelect');
+  const vm = document.getElementById('vmScriptList');
+  sel.innerHTML = ''; vm.innerHTML = '';
+  Object.keys(scripts).sort().forEach(n=>{
+    const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+    const o2 = document.createElement('option'); o2.value = n; o2.textContent = n; vm.appendChild(o2);
+  });
+  if(!sel.value && sel.options.length) sel.value = sel.options[0].value;
+  if(!vm.value && vm.options.length) vm.value = vm.options[0].value;
+  loadVoiceIntoEditor();
+  populateSystemVoiceSelect(document.getElementById('systemVoiceSelect'), true);
+  populateSystemVoiceSelect(document.getElementById('vmSystemVoiceSelect'), true);
+}
+
+function loadVoiceIntoEditor(){
+  const vm = document.getElementById('vmScriptList');
+  const name = vm.value;
+  const scripts = loadScripts();
+  if(!name || !scripts[name]) return;
+  const v = scripts[name];
+  document.getElementById('vmName').value = name;
+  document.getElementById('vmTemplates').value = (v.templates || []).join('\n');
+  document.getElementById('vmRate').value = v.rate || 1.0;
+  const pvi = (v.preferredVoiceIndex !== undefined && v.preferredVoiceIndex !== null) ? v.preferredVoiceIndex : '';
+  document.getElementById('vmSystemVoiceSelect').value = String(pvi);
+}
+
 function refreshClipList(){
   const clips = loadClips(); const list = document.getElementById('clipList'); list.innerHTML = '';
   Object.keys(clips).sort().forEach(k => {
@@ -335,15 +347,9 @@ function refreshClipList(){
   list.querySelectorAll('[data-del]').forEach(a => { a.addEventListener('click', (ev)=>{ ev.preventDefault(); const nm = a.getAttribute('data-del'); if(!confirm('Delete clip '+nm+'?')) return; const clips = loadClips(); delete clips[nm]; saveClips(clips); refreshClipList(); }); });
 }
 
-// Scripts UI
-function populateScriptSelect(){ const scripts = loadScripts(); const sel = document.getElementById('scriptSelect'); const vm = document.getElementById('vmScriptList'); sel.innerHTML=''; vm.innerHTML=''; Object.keys(scripts).sort().forEach(name=>{ const o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o); const o2 = document.createElement('option'); o2.value = name; o2.textContent = name; vm.appendChild(o2); }); if(!sel.value && sel.options.length) sel.value = sel.options[0].value; if(!vm.value && vm.options.length) vm.value = vm.options[0].value; loadScriptIntoEditor(); }
-function loadScriptIntoEditor(){ const vm = document.getElementById('vmScriptList'); const name = vm.value; const scripts = loadScripts(); if(!name || !scripts[name]) return; const v = scripts[name]; document.getElementById('vmName').value = name; document.getElementById('vmTemplates').value = (v.templates||[]).join('\n'); document.getElementById('vmRate').value = v.rate || 1.0; }
-function refreshScriptEditor(){ populateScriptSelect(); loadScriptIntoEditor(); }
-
-// Image Library UI
+// Image library UI
 function refreshImageLibrary(){
-  const ds = loadDataset();
-  const cont = document.getElementById('libContent'); cont.innerHTML = '';
+  const ds = loadDataset(); const cont = document.getElementById('libContent'); cont.innerHTML = '';
   const labels = Object.keys(ds).sort();
   if(labels.length === 0){ cont.innerHTML = '<div class="muted">No images saved yet.</div>'; return; }
   labels.forEach(label => {
@@ -362,12 +368,10 @@ function refreshImageLibrary(){
     });
     cont.appendChild(listWrap);
   });
-
-  // attach delete handlers for individual images and labels
   cont.querySelectorAll('[data-del]').forEach(a => {
     a.addEventListener('click', (ev)=> {
       ev.preventDefault();
-      const key = a.getAttribute('data-del'); // format label#idx
+      const key = a.getAttribute('data-del');
       const parts = key.split('#'); if(parts.length!==2) return;
       const label = parts[0], idx = parseInt(parts[1],10);
       if(!confirm('Delete this image?')) return;
@@ -375,7 +379,6 @@ function refreshImageLibrary(){
       if(ds2[label]){ ds2[label].splice(idx,1); if(ds2[label].length===0) delete ds2[label]; saveDataset(ds2); refreshImageLibrary(); }
     });
   });
-
   cont.querySelectorAll('[data-del-label]').forEach(a => {
     a.addEventListener('click', (ev)=> {
       ev.preventDefault();
@@ -389,7 +392,106 @@ function refreshImageLibrary(){
 // helpers
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-// ensure script storage exists at first run
+// initial setup and event wiring
+document.addEventListener('DOMContentLoaded', async ()=>{
+  updatePointsBadge();
+  // ensure default scripts exist
+  if(!localStorage.getItem(STORAGE_SCRIPTS)) saveScripts(defaultScripts());
+
+  // populate UI lists
+  populateUILists();
+  refreshClipList();
+  refreshImageLibrary();
+
+  // populate system voice selects when voices are available
+  const populateVoicesOnce = () => {
+    populateSystemVoiceSelect(document.getElementById('systemVoiceSelect'));
+    populateSystemVoiceSelect(document.getElementById('vmSystemVoiceSelect'));
+    // if vm editor had a stored voice index, set it
+    loadVoiceIntoEditor();
+  };
+  window.speechSynthesis.onvoiceschanged = populateVoicesOnce;
+  // also try immediate populate
+  populateVoicesOnce();
+
+  // load model (async)
+  loadModel();
+
+  // file upload classify
+  document.getElementById('imageInput').addEventListener('change', async (ev)=>{
+    const f = ev.target.files && ev.target.files[0]; if(!f) return;
+    try {
+      const imgEl = await fileToImage(f); currentImageEl = imgEl;
+      const preview = document.getElementById('preview'); preview.src = imgEl.src; preview.style.display = 'block';
+      document.getElementById('predictionsArea').style.display = 'none'; document.getElementById('labelSaveArea').style.display = 'none';
+      document.getElementById('modelStatus').textContent = 'Classifying...';
+      let preds = await classifyImage(imgEl); preds = applySmallBadness(preds); lastPredictions = preds; renderPredictions(preds);
+      document.getElementById('predictionsArea').style.display = 'block'; document.getElementById('modelStatus').textContent = 'Ready';
+
+      // Auto-speak if enabled
+      const autoSpeak = document.getElementById('autoSpeakToggle').checked;
+      if(autoSpeak){
+        const scriptName = document.getElementById('scriptSelect').value;
+        const scripts = loadScripts();
+        const script = scripts[scriptName] || null;
+        const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`;
+        const seq = buildSequenceFromTemplate(tpl, preds[0] ? preds[0][0] : 'something');
+        // Prefer script's stored preferredVoiceIndex if present, otherwise use system select
+        const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null);
+        await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10)));
+      }
+    } catch(e){ console.error(e); alert('Failed to load or classify image: ' + e.message); }
+  });
+
+  // interactions
+  document.getElementById('correctBtn').addEventListener('click', ()=>{ savePoints(loadPoints()+1); alert('Point awarded! Total: ' + loadPoints()); });
+
+  document.getElementById('incorrectBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'block'; });
+  document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; });
+  document.getElementById('saveLabelBtn').addEventListener('click', ()=>{ const label = (document.getElementById('correctLabelInput').value||'').trim(); if(!label){ alert('Enter a label'); return; } saveLabeledImage(label); document.getElementById('labelSaveArea').style.display = 'none'; document.getElementById('correctLabelInput').value = ''; refreshImageLibrary(); });
+
+  document.getElementById('speakBtn').addEventListener('click', async ()=>{ if(!lastPredictions || !lastPredictions[0]){ alert('No prediction yet'); return; } const top = lastPredictions[0][0]; const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, top); const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null); await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10))); });
+
+  document.getElementById('previewScriptBtn').addEventListener('click', async ()=>{ const lab = (document.getElementById('previewLabelInput').value||'cat').trim(); const scriptName = document.getElementById('scriptSelect').value; const scripts = loadScripts(); const script = scripts[scriptName] || null; const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : `I think this is {label}.`; const seq = buildSequenceFromTemplate(tpl, lab); const preferred = (script && script.preferredVoiceIndex !== undefined && script.preferredVoiceIndex !== null) ? script.preferredVoiceIndex : (document.getElementById('systemVoiceSelect').value || null); await playSequence(seq, script ? script.rate||1.0 : 1.0, preferred === '' ? null : (preferred===null?null:parseInt(preferred,10))); });
+
+  // Voice maker
+  document.getElementById('vmScriptList').addEventListener('change', loadScriptIntoEditor);
+  document.getElementById('vmSave').addEventListener('click', ()=>{ const name = (document.getElementById('vmName').value||'').trim(); if(!name){ alert('Provide a name'); return; } const raw = document.getElementById('vmTemplates').value||''; const templates = raw.split('\n').map(s=>s.trim()).filter(Boolean); if(templates.length===0){ alert('Add at least one template'); return; } const rate = parseFloat(document.getElementById('vmRate').value)||1.0; const prefVoice = document.getElementById('vmSystemVoiceSelect').value || null; const scripts = loadScripts(); scripts[name] = { templates, rate, preferredVoiceIndex: prefVoice === '' ? null : parseInt(prefVoice,10) }; saveScripts(scripts); populateUILists(); alert('Saved script: ' + name); });
+  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value = 'NewVoice'; document.getElementById('vmTemplates').value = 'I think this is {label}.'; document.getElementById('vmRate').value = 1.0; document.getElementById('vmSystemVoiceSelect').value = ''; });
+  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateUILists(); refreshClipList(); refreshImageLibrary(); alert('Deleted ' + name); });
+
+  // Clip upload
+  document.getElementById('clipSave').addEventListener('click', ()=>{ const f = document.getElementById('clipFile').files && document.getElementById('clipFile').files[0]; const name = (document.getElementById('clipName').value||'').trim(); if(!f){ alert('Choose an audio file'); return; } if(!name){ alert('Provide clip name'); return; } const reader = new FileReader(); reader.onload = (e) => { const dataUrl = e.target.result; const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipList(); document.getElementById('clipFile').value = ''; document.getElementById('clipName').value = ''; alert('Saved clip: ' + name); }; reader.readAsDataURL(f); });
+  document.getElementById('clipListRefresh').addEventListener('click', refreshClipList);
+
+  document.getElementById('vmPlayPreview').addEventListener('click', async ()=>{ const name = (document.getElementById('vmScriptList').value||''); const scripts = loadScripts(); const script = scripts[name] || null; if(!script){ alert('Choose a script'); return; } const previewLabel = (document.getElementById('vmPreviewLabel').value||'cat').trim(); const tpl = script.templates[Math.floor(Math.random()*script.templates.length)]; const seq = buildSequenceFromTemplate(tpl, previewLabel); await playSequence(seq, script.rate || 1.0, script.preferredVoiceIndex===null?null:script.preferredVoiceIndex); });
+
+  // dataset export/import
+  document.getElementById('exportDataset').addEventListener('click', ()=>{ const ds = loadDataset(); const blob = new Blob([JSON.stringify(ds)], {type:'application/json'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'funnyai_dataset.json'; a.click(); setTimeout(()=> URL.revokeObjectURL(url), 5000); });
+  document.getElementById('importDataset').addEventListener('click', ()=> document.getElementById('importFile').click());
+  document.getElementById('importFile').addEventListener('change', (ev)=>{ const f = ev.target.files && ev.target.files[0]; if(!f) return; const r = new FileReader(); r.onload = e => { try { const obj = JSON.parse(e.target.result); const ds = loadDataset(); Object.keys(obj).forEach(k => { if(!ds[k]) ds[k]=[]; ds[k]=ds[k].concat(obj[k]); }); saveDataset(ds); refreshImageLibrary(); alert('Imported dataset (merged)'); } catch(err){ alert('Invalid JSON file'); } }; r.readAsText(f); });
+
+  // image library upload
+  document.getElementById('libSaveImage').addEventListener('click', ()=>{ const f = document.getElementById('libImageFile').files && document.getElementById('libImageFile').files[0]; const label = (document.getElementById('libImageLabel').value||'').trim(); if(!f){ alert('Choose an image file'); return; } if(!label){ alert('Provide a label'); return; } const reader = new FileReader(); reader.onload = e => { const dataUrl = e.target.result; const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds); document.getElementById('libImageFile').value=''; document.getElementById('libImageLabel').value=''; refreshImageLibrary(); alert('Added image to library under: ' + label); }; reader.readAsDataURL(f); });
+  document.getElementById('libRefresh').addEventListener('click', refreshImageLibrary);
+});
+
+// render predictions list
+function renderPredictions(preds){
+  const ul = document.getElementById('predList'); ul.innerHTML = '';
+  preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(p[0])}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); });
+}
+
+// save labeled image from main flow
+function saveLabeledImage(label){
+  if(!currentImageEl){ alert('No image loaded.'); return; }
+  const canvas = document.createElement('canvas'); canvas.width = currentImageEl.naturalWidth; canvas.height = currentImageEl.naturalHeight;
+  const ctx = canvas.getContext('2d'); ctx.drawImage(currentImageEl, 0, 0);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+  const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({ data: dataUrl, t: Date.now() }); saveDataset(ds);
+}
+
+// ensure defaults exist
 (function ensureDefaults(){ if(!localStorage.getItem(STORAGE_SCRIPTS)) saveScripts(defaultScripts()); })();
 
 </script>
