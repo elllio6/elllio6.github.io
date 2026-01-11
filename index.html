@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FunnyImageAI — image + video voice (auto guesses)</title>
+  <title>FunnyImageAI — Safari-ready (image + video/audio voice)</title>
 
   <!-- TensorFlow.js + MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.9.0/dist/tf.min.js"></script>
@@ -11,7 +11,7 @@
 
   <style>
     :root{--accent:#0b6df2;--muted:#6b7280;--card:#fff;--bg:#f3f6fb;--radius:10px}
-    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;background:var(--bg);color:#0f172a}
+    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;background:var(--bg);color:#0f172a}
     .wrap{max-width:1100px;margin:18px auto;padding:16px}
     header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px}
     h1{margin:0;font-size:1.25rem}
@@ -37,7 +37,6 @@
     .thumb{width:84px;height:64px;object-fit:cover;border-radius:8px;border:1px solid #eef2ff}
     footer{margin-top:16px;color:var(--muted);text-align:center}
     .inline{display:inline-flex;gap:8px;align-items:center}
-    .settings-row{display:flex;gap:8px;align-items:center;margin-top:8px}
     .status { margin-left:8px; font-weight:600; color:var(--muted); font-size:0.95rem; }
   </style>
 </head>
@@ -45,15 +44,14 @@
   <div class="wrap">
     <header>
       <div>
-        <h1>FunnyImageAI</h1>
-        <div class="muted">One image for guessing + one video used for voice. The app can repeat different guesses automatically.</div>
+        <h1>FunnyImageAI — Safari-ready</h1>
+        <div class="muted">One image for guessing. Use a video or upload an audio clip for voice. Tap "Enable audio" once (Safari needs a gesture).</div>
       </div>
       <div style="text-align:right">
         <div class="badge" id="pointsBadge">Points: 0</div>
         <div style="margin-top:8px">
-          <label class="small muted inline">Auto speak on upload
-            <input id="autoSpeakToggle" type="checkbox" checked style="margin-left:8px">
-          </label>
+          <button id="enableAudioBtn" class="ghost">Enable audio</button>
+          <div id="audioStatus" class="small muted" style="margin-top:6px">Audio: not enabled</div>
         </div>
       </div>
     </header>
@@ -94,7 +92,7 @@
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <button id="startLoopBtn" class="u-btn">Start auto-guesses</button>
             <button id="stopLoopBtn" class="u-btn ghost" style="display:none">Stop</button>
-            <div class="settings-row">
+            <div style="display:flex;gap:8px;align-items:center">
               <label class="small muted">Delay (sec)</label>
               <input id="minDelay" type="number" min="1" value="2" style="width:70px">
               <span class="small muted">to</span>
@@ -109,26 +107,34 @@
         <label>Saved clips</label>
         <ul id="clipList" class="clip-list small"></ul>
 
-        <div style="margin-top:10px" class="small">Use the Voice Maker (on the right) to edit templates and include <code>{clip:video_clip}</code> or <code>{label}</code>.</div>
+        <div style="margin-top:10px" class="small">Use the Voice Maker (right) to edit templates and include <code>{clip:name}</code> or <code>{label}</code>.</div>
       </div>
 
-      <!-- Right: video, voice maker -->
+      <!-- Right: video/audio, voice maker -->
       <div>
         <div class="card" style="margin-bottom:12px">
-          <label>Upload video (voice source)</label>
+          <label>Video (voice source) — OR upload audio (fallback for Safari)</label>
           <input id="videoInput" type="file" accept="video/*">
           <video id="videoPlayer" controls style="width:100%;margin-top:8px;display:none"></video>
 
           <div style="margin-top:8px" class="small">
-            <label>Segment to extract (seconds)</label>
+            <div id="audioFallbackArea" class="hidden">
+              <label>Audio fallback (if video extraction not supported)</label>
+              <input id="audioInput" type="file" accept="audio/*">
+              <div class="small muted">Upload a short MP3/WAV if the browser cannot record from video.</div>
+            </div>
+
+            <label style="margin-top:8px">Segment to extract (seconds)</label>
             <div style="display:flex;gap:8px">
               <input id="segStart" placeholder="start (s)" type="number" min="0" step="0.1">
               <input id="segEnd" placeholder="end (s)" type="number" min="0" step="0.1">
             </div>
+
             <div class="controls" style="margin-top:8px">
               <button id="extractClipBtn">Extract clip & Match voice</button>
               <button id="previewSegBtn" class="ghost">Preview segment</button>
             </div>
+
             <div id="extractStatus" class="small muted" style="margin-top:8px"></div>
           </div>
         </div>
@@ -160,30 +166,29 @@
             <button id="vmDelete" class="secondary">Delete</button>
           </div>
 
-          <div style="margin-top:12px" class="small muted">When you extract a clip from the video, the app will suggest pitch & rate values; save them with a script so TTS segments use those settings.</div>
+          <div style="margin-top:12px" class="small muted">When you extract a clip, the app will suggest pitch & rate; save them with a script so TTS segments use those settings.</div>
         </div>
       </div>
     </div>
 
     <footer>
-      <div class="small muted">All processing is client-side. If extraction doesn't work, try a Chromium-based browser with <code>captureStream()</code> and <code>MediaRecorder</code>.</div>
+      <div class="small muted">All processing is client-side. If extraction fails on Safari, use the audio upload fallback.</div>
     </footer>
   </div>
 
 <script>
-/* Changes in this version:
-   - Auto-guess loop: repeatedly speaks different guesses at a random delay between min and max seconds.
-   - Start/Stop controls and status indicator.
-   - Ensures guesses don't repeat until all candidates used (shuffles candidates).
-   - Stops automatically when a new image is uploaded or when user presses Stop.
-   - Retains previous features: single image, video-based clip extraction, pitch/rate suggestion, sequential merged playback.
+/* Safari-focused robust implementation
+   - Ensure user taps "Enable audio" to allow speech on Safari (user gesture)
+   - Robust voice loading + speakText (waits for voices and doesn't cancel)
+   - If captureStream/MediaRecorder unavailable, show audio-file fallback
+   - Auto-guess loop waits for audio enabled before speaking
 */
 
 // Storage keys & defaults
-const SCRIPTS_KEY = 'funnyai_scripts_video_v1';
-const CLIPS_KEY = 'funnyai_clips_video_v1';
-const DATASET_KEY = 'funnyai_dataset_v1';
-const POINTS_KEY = 'funnyai_points_v1';
+const SCRIPTS_KEY = 'funny_safari_scripts_v1';
+const CLIPS_KEY = 'funny_safari_clips_v1';
+const DATASET_KEY = 'funny_safari_dataset_v1';
+const POINTS_KEY = 'funny_safari_points_v1';
 
 function defaultScripts(){
   return {
@@ -202,27 +207,120 @@ function loadPoints(){ return parseInt(localStorage.getItem(POINTS_KEY) || '0', 
 function savePoints(n){ localStorage.setItem(POINTS_KEY, String(n)); updatePointsBadge(); }
 function updatePointsBadge(){ document.getElementById('pointsBadge').textContent = 'Points: ' + loadPoints(); }
 
-// TF model
+// Model
 let net = null;
 async function loadModel(){
   document.getElementById('modelStatus').textContent = 'Loading MobileNet model (from CDN)...';
   try {
     net = await mobilenet.load({version:2, alpha:1.0});
     document.getElementById('modelStatus').textContent = 'Model loaded.';
-  } catch(e){
+  } catch(e) {
     document.getElementById('modelStatus').textContent = 'Model failed to load: ' + (e.message || e);
   }
 }
 
-// helpers
-function fileToImage(file){ return new Promise((res,rej)=>{ const url = URL.createObjectURL(file); const img = new Image(); img.onload = ()=>{ URL.revokeObjectURL(url); res(img); }; img.onerror = rej; img.src = url; }); }
-function renderPredictions(preds){
-  const ul = document.getElementById('predList'); ul.innerHTML = '';
-  preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(String(p[0]))}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); });
-}
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Voice system: robust loading for Safari
+let AVAILABLE_VOICES = [];
+let VOICES_READY = false;
+let audioEnabled = false; // user must click enableAudioBtn
 
-// Funny badness: add common words occasionally
+function ensureVoicesLoaded(timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    const v = window.speechSynthesis.getVoices();
+    if (v && v.length) {
+      AVAILABLE_VOICES = v;
+      VOICES_READY = true;
+      return resolve(v);
+    }
+    const onvoices = () => {
+      const vv = window.speechSynthesis.getVoices();
+      AVAILABLE_VOICES = vv;
+      VOICES_READY = true;
+      window.speechSynthesis.removeEventListener('voiceschanged', onvoices);
+      resolve(vv);
+    };
+    window.speechSynthesis.addEventListener('voiceschanged', onvoices);
+    setTimeout(() => {
+      const vv = window.speechSynthesis.getVoices() || [];
+      AVAILABLE_VOICES = vv;
+      VOICES_READY = AVAILABLE_VOICES.length > 0;
+      window.speechSynthesis.removeEventListener('voiceschanged', onvoices);
+      resolve(AVAILABLE_VOICES);
+    }, timeoutMs);
+  });
+}
+
+function pickVoiceIndex(preferredIndex = null) {
+  if (preferredIndex !== null && !isNaN(preferredIndex) && AVAILABLE_VOICES[preferredIndex]) return preferredIndex;
+  for (let i = 0; i < AVAILABLE_VOICES.length; i++) {
+    const v = AVAILABLE_VOICES[i];
+    if (/en/i.test(v.lang) || /english/i.test(v.name)) return i;
+  }
+  return AVAILABLE_VOICES.length ? 0 : null;
+}
+
+async function speakText(text, rate = 1.0, pitch = 1.0, preferredVoiceIndex = null) {
+  if (!audioEnabled) {
+    console.warn('Audio not enabled by user gesture; speak suppressed (Safari requires user gesture).');
+    return;
+  }
+  if (!('speechSynthesis' in window)) {
+    console.warn('No speechSynthesis available');
+    return;
+  }
+  await ensureVoicesLoaded();
+  return new Promise((resolve) => {
+    try {
+      const utter = new SpeechSynthesisUtterance(String(text));
+      utter.rate = Number.isFinite(rate) ? rate : 1.0;
+      utter.pitch = Number.isFinite(pitch) ? pitch : 1.0;
+      const idx = pickVoiceIndex(preferredVoiceIndex);
+      if (idx !== null && AVAILABLE_VOICES[idx]) utter.voice = AVAILABLE_VOICES[idx];
+      utter.onend = () => resolve();
+      utter.onerror = () => resolve();
+      // speak (do not cancel global synthesis — sequential behavior is handled by awaiting)
+      window.speechSynthesis.speak(utter);
+    } catch (err) {
+      console.warn('speakText failed', err);
+      resolve();
+    }
+  });
+}
+
+// Playback utilities
+function playClipDataUrl(dataUrl){ return new Promise(res => { const audio = new Audio(dataUrl); audio.onended = ()=>res(); audio.onerror = ()=>res(); audio.play().catch(()=>res()); }); }
+
+function buildSequenceFromTemplate(template, label){
+  const seq = []; const clipRegex = /\{clip:([^}]+)\}/g;
+  let lastIndex = 0; let m;
+  while((m = clipRegex.exec(template)) !== null){
+    const before = template.slice(lastIndex, m.index);
+    if(before.trim()) seq.push({type:'tts', text: before.replace(/\{label\}/g, label)});
+    const clipName = m[1].trim();
+    seq.push({type:'clip', clip: clipName});
+    lastIndex = m.index + m[0].length;
+  }
+  const tail = template.slice(lastIndex);
+  if(tail.trim()) seq.push({type:'tts', text: tail.replace(/\{label\}/g, label)});
+  return seq;
+}
+
+async function playSequence(seq, rate=1.0, pitch=1.0){
+  for(const item of seq){
+    if(item.type === 'clip'){
+      const clips = loadClips();
+      const dataUrl = clips[item.clip];
+      if(dataUrl) await playClipDataUrl(dataUrl);
+      else await new Promise(r=>setTimeout(r,120));
+    } else if(item.type === 'tts'){
+      const t = (item.text||'').trim();
+      if(t) await speakText(t, rate, pitch);
+      else await new Promise(r=>setTimeout(r,80));
+    }
+  }
+}
+
+// small "funny badness"
 function applySmallBadness(preds){
   const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
   let labels = preds.map(p=>[p[0], p[1]]);
@@ -239,135 +337,7 @@ function applySmallBadness(preds){
   return labels;
 }
 
-// Speech & clip playback (sequential)
-function playClipDataUrl(dataUrl){ return new Promise(res => { const audio = new Audio(dataUrl); audio.onended = ()=>res(); audio.onerror = ()=>res(); audio.play().catch(()=>res()); }); }
-function speakText(text, rate=1.0, pitch=1.0){
-  return new Promise(res => {
-    if(!('speechSynthesis' in window)){ res(); return; }
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = rate;
-    utt.pitch = pitch;
-    utt.onend = ()=>res();
-    utt.onerror = ()=>res();
-    // don't cancel global synthesis to allow queued items; but ensure we speak in sequence by awaiting.
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utt);
-  });
-}
-function buildSequenceFromTemplate(template, label){
-  const seq = []; const clipRegex = /\{clip:([^}]+)\}/g;
-  let lastIndex = 0; let m;
-  while((m = clipRegex.exec(template)) !== null){
-    const before = template.slice(lastIndex, m.index);
-    if(before.trim()) seq.push({type:'tts', text: before.replace(/\{label\}/g, label)});
-    const clipName = m[1].trim();
-    seq.push({type:'clip', clip: clipName});
-    lastIndex = m.index + m[0].length;
-  }
-  const tail = template.slice(lastIndex);
-  if(tail.trim()) seq.push({type:'tts', text: tail.replace(/\{label\}/g, label)});
-  return seq;
-}
-async function playSequence(seq, rate=1.0, pitch=1.0){
-  for(const item of seq){
-    if(item.type === 'clip'){
-      const clips = loadClips();
-      const dataUrl = clips[item.clip];
-      if(dataUrl) await playClipDataUrl(dataUrl);
-      else await new Promise(r=>setTimeout(r,120));
-    } else if(item.type === 'tts'){
-      const t = (item.text||'').trim();
-      if(t) await speakText(t, rate, pitch);
-      else await new Promise(r=>setTimeout(r,80));
-    }
-  }
-}
-
-// Guess loop state and helpers
-let guessLoopRunning = false;
-let guessCandidates = [];
-let guessIndex = 0;
-let lastGuessed = null;
-
-function shuffleArray(a){
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-// Build candidates from predictions + some commons to keep it funny
-function buildGuessCandidatesFromPreds(preds){
-  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
-  const labels = preds.map(p=>p[0]);
-  let combined = labels.slice();
-  // Add some commons but avoid duplicates
-  commons.forEach(c => { if(!combined.includes(c) && combined.length < Math.max(6, labels.length+3)) combined.push(c); });
-  return shuffleArray(combined);
-}
-
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-async function startGuessLoop(){
-  if(guessLoopRunning) return;
-  if(!lastPredictions || lastPredictions.length === 0){ alert('No predictions to guess from. Upload an image first.'); return; }
-  guessCandidates = buildGuessCandidatesFromPreds(lastPredictions);
-  guessIndex = 0;
-  guessLoopRunning = true;
-  document.getElementById('startLoopBtn').style.display = 'none';
-  document.getElementById('stopLoopBtn').style.display = '';
-  document.getElementById('loopStatus').textContent = 'Running';
-  // Loop
-  while(guessLoopRunning){
-    if(guessIndex >= guessCandidates.length){
-      // reshuffle for more variety
-      guessCandidates = shuffleArray(guessCandidates.slice());
-      guessIndex = 0;
-    }
-    let guessLabel = guessCandidates[guessIndex++];
-    // Ensure different from last guessed when possible
-    if(guessLabel === lastGuessed && guessCandidates.length > 1){
-      guessLabel = guessCandidates[guessIndex++ % guessCandidates.length];
-    }
-    lastGuessed = guessLabel;
-    // Build a simple template for guessing: prefer using script template if available, otherwise default
-    const scriptName = document.getElementById('vmScriptList').value;
-    const script = loadScripts()[scriptName] || null;
-    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
-    const seq = buildSequenceFromTemplate(tpl, guessLabel);
-    const pitch = script ? (script.pitch||1.0) : 1.0;
-    const rate = script ? (script.rate||1.0) : 1.0;
-    try {
-      await playSequence(seq, rate, pitch);
-    } catch(e){
-      console.warn('playSequence error', e);
-    }
-    if(!guessLoopRunning) break;
-    // random delay between minDelay and maxDelay (in seconds)
-    let minD = parseFloat(document.getElementById('minDelay').value) || 2;
-    let maxD = parseFloat(document.getElementById('maxDelay').value) || 5;
-    if(maxD < minD) { const t = minD; minD = maxD; maxD = t; }
-    const delaySec = minD + Math.random()*(maxD - minD);
-    const delayMs = Math.round(delaySec*1000);
-    // Wait but respect stop flag
-    const start = Date.now();
-    while(guessLoopRunning && Date.now() - start < delayMs){
-      await sleep(200); // check stop every 200ms
-    }
-  }
-  // loop ended cleanup
-  guessLoopRunning = false;
-  document.getElementById('startLoopBtn').style.display = '';
-  document.getElementById('stopLoopBtn').style.display = 'none';
-  document.getElementById('loopStatus').textContent = 'Stopped';
-}
-
-function stopGuessLoop(){
-  guessLoopRunning = false;
-}
-
-// Pitch estimation & audio extraction (same approach as before)
+// Pitch estimation (basic autocorrelation; best-effort)
 async function estimatePitchFromAudioBuffer(audioBuffer){
   const fs = audioBuffer.sampleRate;
   const channelData = audioBuffer.getChannelData(0);
@@ -388,61 +358,142 @@ async function estimatePitchFromAudioBuffer(audioBuffer){
   return fundamental;
 }
 
+// Audio extraction paths
 async function extractAudioFromVideoSegment(videoElement, startSec, endSec){
-  if(!videoElement || isNaN(startSec) || isNaN(endSec) || endSec <= startSec) throw new Error('Invalid segment times');
-  if(!videoElement.captureStream) throw new Error('captureStream not supported in this browser');
-  const stream = videoElement.captureStream();
-  let recorder;
-  try {
-    recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'});
-  } catch(e) {
-    recorder = new MediaRecorder(stream);
-  }
-  const chunks = [];
-  recorder.ondataavailable = ev => { if(ev.data && ev.data.size) chunks.push(ev.data); };
-  return new Promise((resolve, reject) => {
-    recorder.onstop = async () => {
-      const blob = new Blob(chunks, {type: chunks[0]?.type || 'audio/webm'});
-      const arrayBuf = await blob.arrayBuffer();
-      let audioBuffer;
-      try {
-        audioBuffer = await new Promise((res, rej) => {
-          const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100 * 2, 44100);
-          ctx.decodeAudioData(arrayBuf, decoded => res(decoded), err => rej(err));
-        });
-      } catch(err){
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        audioBuffer = await actx.decodeAudioData(arrayBuf);
-      }
-      const dataUrl = URL.createObjectURL(blob);
-      resolve({blob, dataUrl, audioBuffer});
-    };
-    recorder.onerror = err => reject(err);
-    const onSeeked = () => {
-      videoElement.play();
-      recorder.start();
-      const stopHandler = () => {
-        if(videoElement.currentTime >= endSec - 0.01 || videoElement.ended){
-          videoElement.pause();
-          setTimeout(()=> {
-            try { recorder.stop(); } catch(e){ /* ignore */ }
-          }, 150);
-          videoElement.removeEventListener('timeupdate', stopHandler);
-        }
+  // Prefer captureStream + MediaRecorder if available
+  if(videoElement.captureStream && typeof MediaRecorder !== 'undefined'){
+    // previous robust approach
+    let recorder;
+    const stream = videoElement.captureStream();
+    try { recorder = new MediaRecorder(stream, {mimeType: 'audio/webm;codecs=opus'}); } catch(e) { recorder = new MediaRecorder(stream); }
+    const chunks = [];
+    recorder.ondataavailable = ev => { if(ev.data && ev.data.size) chunks.push(ev.data); };
+    return new Promise((resolve, reject) => {
+      recorder.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, {type: chunks[0]?.type || 'audio/webm'});
+          const arrayBuf = await blob.arrayBuffer();
+          let audioBuffer;
+          try {
+            audioBuffer = await new Promise((res, rej) => {
+              const ctx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100 * 2, 44100);
+              ctx.decodeAudioData(arrayBuf, decoded => res(decoded), err => rej(err));
+            });
+          } catch(err){
+            const actx = new (window.AudioContext || window.webkitAudioContext)();
+            audioBuffer = await actx.decodeAudioData(arrayBuf);
+          }
+          const dataUrl = URL.createObjectURL(blob);
+          resolve({blob, dataUrl, audioBuffer});
+        } catch(e){ reject(e); }
       };
-      videoElement.addEventListener('timeupdate', stopHandler);
-    };
-    videoElement.currentTime = Math.max(0, startSec);
-    videoElement.addEventListener('seeked', function f(){
-      videoElement.removeEventListener('seeked', f);
-      onSeeked();
+      recorder.onerror = err => reject(err);
+      const onSeeked = () => {
+        videoElement.play();
+        recorder.start();
+        const stopHandler = () => {
+          if(videoElement.currentTime >= endSec - 0.01 || videoElement.ended){
+            videoElement.pause();
+            setTimeout(()=> { try { recorder.stop(); } catch(e){} }, 150);
+            videoElement.removeEventListener('timeupdate', stopHandler);
+          }
+        };
+        videoElement.addEventListener('timeupdate', stopHandler);
+      };
+      videoElement.currentTime = Math.max(0, startSec);
+      videoElement.addEventListener('seeked', function f(){
+        videoElement.removeEventListener('seeked', f);
+        onSeeked();
+      });
     });
-  });
+  } else {
+    // captureStream not supported: fail early and suggest audio upload fallback
+    throw new Error('Video extraction not supported in this browser. Use the audio upload fallback instead.');
+  }
 }
 
-// UI wiring and event handlers
+// Decode audio file directly (used for audio fallback upload)
+async function decodeAudioFileToBuffer(file){
+  const arrayBuf = await file.arrayBuffer();
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  return await ctx.decodeAudioData(arrayBuf);
+}
+
+// UI wiring and state
 let currentImageEl = null;
 let lastPredictions = [];
+let guessLoopRunning = false;
+let guessCandidates = [];
+let guessIndex = 0;
+let lastGuessed = null;
+
+function shuffleArray(a){
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function buildGuessCandidatesFromPreds(preds){
+  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
+  const labels = preds.map(p=>p[0]);
+  let combined = labels.slice();
+  commons.forEach(c => { if(!combined.includes(c) && combined.length < Math.max(6, labels.length+3)) combined.push(c); });
+  return shuffleArray(combined);
+}
+
+async function startGuessLoop(){
+  if(guessLoopRunning) return;
+  if(!lastPredictions || lastPredictions.length === 0){ alert('No predictions yet — upload an image first.'); return; }
+  if(!audioEnabled){ alert('Tap "Enable audio" before starting auto-guesses (Safari requires a user gesture).'); return; }
+  guessCandidates = buildGuessCandidatesFromPreds(lastPredictions);
+  guessIndex = 0;
+  guessLoopRunning = true;
+  document.getElementById('startLoopBtn').style.display = 'none';
+  document.getElementById('stopLoopBtn').style.display = '';
+  document.getElementById('loopStatus').textContent = 'Running';
+  while(guessLoopRunning){
+    if(guessIndex >= guessCandidates.length){
+      guessCandidates = shuffleArray(guessCandidates.slice());
+      guessIndex = 0;
+    }
+    let g = guessCandidates[guessIndex++];
+    if(g === lastGuessed && guessCandidates.length > 1){
+      g = guessCandidates[guessIndex++ % guessCandidates.length];
+    }
+    lastGuessed = g;
+    const scriptName = document.getElementById('vmScriptList').value;
+    const script = loadScripts()[scriptName] || null;
+    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
+    const seq = buildSequenceFromTemplate(tpl, g);
+    const pitch = script ? (script.pitch||1.0) : 1.0;
+    const rate = script ? (script.rate||1.0) : 1.0;
+    await playSequence(seq, rate, pitch);
+    if(!guessLoopRunning) break;
+    // delay
+    let minD = parseFloat(document.getElementById('minDelay').value) || 2;
+    let maxD = parseFloat(document.getElementById('maxDelay').value) || 5;
+    if(maxD < minD) { const t=minD; minD=maxD; maxD=t; }
+    const delaySec = minD + Math.random()*(maxD - minD);
+    const start = Date.now();
+    while(guessLoopRunning && Date.now()-start < delaySec*1000){
+      await new Promise(r=>setTimeout(r, 200));
+    }
+  }
+  guessLoopRunning = false;
+  document.getElementById('startLoopBtn').style.display = '';
+  document.getElementById('stopLoopBtn').style.display = 'none';
+  document.getElementById('loopStatus').textContent = 'Stopped';
+}
+
+function stopGuessLoop(){ guessLoopRunning = false; }
+
+// UI helpers
+function renderPredictions(preds){
+  const ul = document.getElementById('predList'); ul.innerHTML = '';
+  preds.forEach((p,i)=>{ const li = document.createElement('li'); li.innerHTML = `<strong>${i+1}. ${escapeHtml(String(p[0]))}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function populateUI(){
   const scripts = loadScripts();
@@ -498,22 +549,47 @@ function refreshClipList(){
   });
 }
 
+// DOM events & wiring
 document.addEventListener('DOMContentLoaded', async ()=>{
   if(!localStorage.getItem(SCRIPTS_KEY)) saveScripts(defaultScripts());
   populateUI();
   loadModel();
 
-  // image input
+  // Audio enable (Safari gesture)
+  document.getElementById('enableAudioBtn').addEventListener('click', async ()=>{
+    // mark enabled and attempt to load voices and speak a short confirmation
+    audioEnabled = true;
+    document.getElementById('audioStatus').textContent = 'Audio: enabled';
+    await ensureVoicesLoaded(2000);
+    // Play a short confirmation phrase (user gesture now satisfied)
+    try { await speakText('Audio enabled', 1.0, 1.0); } catch(e){ console.warn(e); }
+  });
+
+  // Video/audio fallback detection
+  const supportsCapture = !!HTMLVideoElement.prototype.captureStream && typeof MediaRecorder !== 'undefined';
+  if(!supportsCapture){
+    document.getElementById('audioFallbackArea').classList.remove('hidden');
+    document.getElementById('extractStatus').textContent = 'Video extraction not supported — use audio upload.';
+  }
+
+  // Image input
   document.getElementById('pickImageBtn').addEventListener('click', ()=> document.getElementById('imageInput').click());
   document.getElementById('imageInput').addEventListener('change', async (ev)=>{
     const f = ev.target.files && ev.target.files[0]; if(!f) return;
     try {
-      const imgEl = await fileToImage(f);
+      const imgEl = await new Promise((res,rej)=>{
+        const url = URL.createObjectURL(f);
+        const img = new Image();
+        img.onload = ()=>{ URL.revokeObjectURL(url); res(img); };
+        img.onerror = rej;
+        img.src = url;
+      });
       currentImageEl = imgEl;
-      const ip = document.getElementById('imagePreview'); ip.src = imgEl.src; ip.classList.remove('hidden');
-      // stop loop if running (new image should reset guesses)
+      document.getElementById('imagePreview').src = imgEl.src;
+      document.getElementById('imagePreview').classList.remove('hidden');
+      // stop loop if running
       if(guessLoopRunning) stopGuessLoop();
-      // classify
+      // classify with model (ensure loaded)
       if(!net) await loadModel();
       document.getElementById('modelStatus').textContent = 'Classifying...';
       const raw = await net.classify(imgEl, 3);
@@ -522,8 +598,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       renderPredictions(lastPredictions);
       document.getElementById('predictionsArea').classList.remove('hidden');
       document.getElementById('modelStatus').textContent = 'Ready';
-      // auto speak if requested (single speak)
-      if(document.getElementById('autoSpeakToggle').checked){
+      // auto speak one time if user enabled audio and toggle could be used (we keep previous auto behavior off to avoid surprises)
+      if(audioEnabled && document.getElementById('autoSpeakToggle') && document.getElementById('autoSpeakToggle').checked){
         const scriptName = document.getElementById('vmScriptList').value;
         const script = loadScripts()[scriptName] || null;
         const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
@@ -533,17 +609,14 @@ document.addEventListener('DOMContentLoaded', async ()=>{
         await playSequence(seq, rate, pitch);
       }
     } catch(err){
-      alert('Image error: ' + (err.message || err));
+      alert('Image load/classify failed: ' + (err.message || err));
     }
   });
 
-  // loop controls
-  document.getElementById('startLoopBtn').addEventListener('click', startGuessLoop);
-  document.getElementById('stopLoopBtn').addEventListener('click', ()=>{ stopGuessLoop(); });
-
-  // manual speak
+  // Manual speak
   document.getElementById('speakBtn').addEventListener('click', async ()=>{
     if(!lastPredictions || !lastPredictions[0]){ alert('No prediction'); return; }
+    if(!audioEnabled){ alert('Tap "Enable audio" to allow speech in this browser.'); return; }
     const top = lastPredictions[0][0];
     const scriptName = document.getElementById('vmScriptList').value;
     const script = loadScripts()[scriptName] || null;
@@ -554,7 +627,14 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     await playSequence(seq, rate, pitch);
   });
 
-  // correct/incorrect handlers
+  // Loop controls
+  document.getElementById('startLoopBtn').addEventListener('click', async ()=>{
+    if(!audioEnabled){ alert('Tap "Enable audio" first (Safari requires a user gesture).'); return; }
+    startGuessLoop();
+  });
+  document.getElementById('stopLoopBtn').addEventListener('click', ()=> stopGuessLoop());
+
+  // Correct/Incorrect/save label
   document.getElementById('correctBtn').addEventListener('click', ()=>{ savePoints(loadPoints()+1); alert('Point awarded! Total: ' + loadPoints()); });
   document.getElementById('incorrectBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').classList.remove('hidden'); });
   document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value=''; });
@@ -574,7 +654,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('correctLabelInput').value = '';
   });
 
-  // video upload & preview
+  // Video preview + extraction
   const videoInput = document.getElementById('videoInput');
   const videoPlayer = document.getElementById('videoPlayer');
   videoInput.addEventListener('change', (ev)=>{
@@ -584,6 +664,44 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     document.getElementById('extractStatus').textContent = 'Video loaded. Choose start/end and click Extract.';
   });
 
+  // Audio fallback upload handling
+  document.getElementById('audioInput').addEventListener('change', async (ev)=>{
+    const f = ev.target.files && ev.target.files[0]; if(!f) return;
+    try {
+      document.getElementById('extractStatus').textContent = 'Decoding audio...';
+      const audioBuffer = await decodeAudioFileToBuffer(f);
+      // create blob URL for playback: convert file to dataURL
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target.result;
+        const name = 'audio_clip_' + Date.now();
+        const clips = loadClips(); clips[name] = dataUrl; saveClips(clips);
+        refreshClipList();
+        // estimate pitch
+        let pitchHz = null;
+        try { pitchHz = await estimatePitchFromAudioBuffer(audioBuffer); } catch(e){ console.warn(e); }
+        let suggestedPitch = 1.0, suggestedRate = 1.0;
+        if(pitchHz && pitchHz>0){
+          const p = Math.max(80, Math.min(400, pitchHz));
+          const norm = (p - 100) / (300 - 100);
+          suggestedPitch = 0.8 + Math.max(0, Math.min(1, norm)) * 0.7;
+          suggestedRate = 0.9 + Math.max(0, Math.min(1, norm)) * 0.3;
+        }
+        document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
+        document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
+        document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
+        const scripts = loadScripts();
+        if(!scripts['VideoVoice']){ scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateUI(); }
+      };
+      reader.readAsDataURL(f);
+    } catch(err){
+      console.error(err);
+      document.getElementById('extractStatus').textContent = 'Audio decode failed.';
+      alert('Audio decode failed: ' + (err.message || err));
+    }
+  });
+
+  // preview segment
   document.getElementById('previewSegBtn').addEventListener('click', ()=>{
     const s = parseFloat(document.getElementById('segStart').value || 0);
     const e = parseFloat(document.getElementById('segEnd').value || 0);
@@ -595,21 +713,29 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     videoPlayer.addEventListener('timeupdate', stopFn);
   });
 
+  // extract (video capture path or fallback)
   document.getElementById('extractClipBtn').addEventListener('click', async ()=>{
     try {
       const s = parseFloat(document.getElementById('segStart').value || 0);
       const e = parseFloat(document.getElementById('segEnd').value || 0);
-      if(!videoPlayer.src){ alert('Load a video first'); return; }
+      if(!videoPlayer.src && !document.getElementById('audioInput').files.length){ alert('Load a video or audio file first'); return; }
       if(isNaN(s) || isNaN(e) || e<=s){ alert('Invalid start/end'); return; }
-      document.getElementById('extractStatus').textContent = 'Extracting audio from video segment...';
-      const res = await extractAudioFromVideoSegment(videoPlayer, s, e);
+      document.getElementById('extractStatus').textContent = 'Extracting audio...';
+      let res;
+      try {
+        res = await extractAudioFromVideoSegment(videoPlayer, s, e);
+      } catch(err){
+        // extraction failed (likely Safari): instruct user to upload audio file as fallback
+        document.getElementById('extractStatus').textContent = 'Video extraction unsupported — use audio upload.';
+        alert('Video extraction not supported in this browser. Upload a short audio clip in “Audio fallback” to use as the voice clip.');
+        return;
+      }
       const name = 'video_clip_' + Date.now();
-      const clips = loadClips(); clips[name] = res.dataUrl; saveClips(clips);
-      refreshClipList();
+      const clips = loadClips(); clips[name] = res.dataUrl; saveClips(clips); refreshClipList();
       let pitchHz = null;
-      try { pitchHz = await estimatePitchFromAudioBuffer(res.audioBuffer); } catch(err){ console.warn('Pitch estimate failed', err); }
+      try { pitchHz = await estimatePitchFromAudioBuffer(res.audioBuffer); } catch(e){ console.warn(e); }
       let suggestedPitch = 1.0, suggestedRate = 1.0;
-      if(pitchHz && pitchHz > 0){
+      if(pitchHz && pitchHz>0){
         const p = Math.max(80, Math.min(400, pitchHz));
         const norm = (p - 100) / (300 - 100);
         suggestedPitch = 0.8 + Math.max(0, Math.min(1, norm)) * 0.7;
@@ -619,11 +745,7 @@ document.addEventListener('DOMContentLoaded', async ()=>{
       document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
       document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
       const scripts = loadScripts();
-      if(!scripts['VideoVoice']){
-        scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate };
-        saveScripts(scripts);
-        populateUI();
-      }
+      if(!scripts['VideoVoice']){ scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateUI(); }
     } catch(err){
       console.error(err);
       alert('Extraction failed: ' + (err.message || err));
@@ -631,10 +753,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     }
   });
 
-  // voice maker handlers
+  // Voice maker handlers
   document.getElementById('vmScriptList').addEventListener('change', loadScriptEditor);
   document.getElementById('vmSave').addEventListener('click', ()=>{
-    const name = (document.getElementById('vmName').value || '').trim();
+    const name = (document.getElementById('vmName').value||'').trim();
     if(!name){ alert('Provide name'); return; }
     const templates = (document.getElementById('vmTemplates').value || '').split('\n').map(s=>s.trim()).filter(Boolean);
     if(templates.length === 0){ alert('Add at least one template line'); return; }
@@ -642,22 +764,12 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     const rate = parseFloat(document.getElementById('vmRate').value) || 1.0;
     const scripts = loadScripts(); scripts[name] = { templates, pitch, rate }; saveScripts(scripts); populateUI(); alert('Saved script: ' + name);
   });
-  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value = 'NewScript'; document.getElementById('vmTemplates').value = 'I think this is {label}.'; document.getElementById('vmPitch').value = '1.0'; document.getElementById('vmRate').value ='1.0'; });
-  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateUI(); alert('Deleted ' + name); });
+  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value='NewScript'; document.getElementById('vmTemplates').value='I think this is {label}.'; document.getElementById('vmPitch').value='1.0'; document.getElementById('vmRate').value='1.0'; });
+  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name=(document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts = loadScripts(); delete scripts[name]; saveScripts(scripts); populateUI(); alert('Deleted ' + name); });
 
   // initial populate
   populateUI();
 });
-
-// Helper: build candidates from preds for loop (no repeats until exhausted)
-function buildGuessCandidatesFromPreds(preds){
-  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
-  const labels = preds.map(p=>p[0]);
-  let combined = labels.slice();
-  commons.forEach(c => { if(!combined.includes(c) && combined.length < Math.max(6, labels.length+3)) combined.push(c); });
-  return shuffleArray(combined);
-}
-
 </script>
 </body>
 </html>
