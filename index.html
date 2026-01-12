@@ -3,22 +3,29 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FunnyImageAI — safer video extraction</title>
+  <title>FunnyImageAI — Expanded Predictions</title>
 
   <!-- TensorFlow.js + MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.9.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.2.1/dist/mobilenet.min.js"></script>
 
   <style>
-    :root{--accent:#0b6df2;--muted:#6b7280;--card:#fff;--bg:#f6f9ff;--radius:10px}
-    html,body{height:100%;margin:0;font-family:Inter, system-ui, -apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#0f172a}
-    .wrap{max-width:1100px;margin:18px auto;padding:16px}
-    header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+    :root{
+      --accent:#0b6df2;
+      --muted:#6b7280;
+      --bg:#f6f9ff;
+      --card:#fff;
+      --radius:10px;
+      --pad:14px;
+    }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#0f172a}
+    .wrap{max-width:1050px;margin:18px auto;padding:16px}
+    header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
     h1{margin:0;font-size:1.2rem}
     .muted{color:var(--muted);font-size:0.95rem}
-    .grid{display:grid;grid-template-columns:1fr 380px;gap:12px}
-    @media (max-width:980px){ .grid{grid-template-columns:1fr} }
-    .card{background:var(--card);border-radius:var(--radius);padding:12px;box-shadow:0 6px 18px rgba(12,18,36,0.06)}
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
+    @media (max-width:960px){ .grid{grid-template-columns:1fr} }
+    .card{background:var(--card);border-radius:var(--radius);padding:var(--pad);box-shadow:0 6px 18px rgba(12,18,36,0.06)}
     .uploader{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #e6eefc;border-radius:10px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff)}
     .hidden{display:none}
     img.preview{max-width:100%;border-radius:8px;margin-top:12px;display:block}
@@ -29,100 +36,91 @@
     button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
     button.secondary{background:#6b7280}
     .small{font-size:0.9rem;color:var(--muted)}
+    /* Removed artificial max-height so the list can show all lines returned by the model */
     .pred-list{list-style:none;padding:0;margin:12px 0}
     .pred-list li{padding:8px 6px;border-bottom:1px dashed #f1f5f9}
     .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
     .status{font-size:0.95rem;color:var(--muted)}
-    .notice{background:#fff7ed;border:1px solid #fee7c6;padding:8px;border-radius:8px;color:#92400e;margin-top:8px}
+    .clip-list a{margin-right:8px}
+    footer{margin-top:18px;color:var(--muted);text-align:center}
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <div>
-        <h1>FunnyImageAI</h1>
-        <div class="muted">Short videos (<=30s, <=10MB) or audio files recommended. If video causes issues, upload audio instead.</div>
+        <h1>FunnyImageAI — Expanded Predictions</h1>
+        <div class="muted">Upload an image; the model now returns many more guesses and the UI shows them all.</div>
       </div>
       <div style="text-align:right">
         <div class="small">Points: <span id="pointsBadge">0</span></div>
-        <button id="enableAudioBtn" class="ghost">Enable audio</button>
-        <div id="audioStatus" class="status">Audio: not enabled</div>
+        <div style="margin-top:8px">
+          <button id="enableAudioBtn" class="ghost">Enable audio</button>
+          <div id="audioStatus" class="status">Audio: not enabled</div>
+        </div>
       </div>
     </header>
 
     <div class="grid">
-      <!-- Main -->
-      <div class="card">
-        <label>Single image (for guessing)</label>
-        <div class="uploader">
-          <input id="imageInput" type="file" accept="image/*">
-          <button id="pickImageBtn" class="ghost">Choose image</button>
-          <div class="small" style="margin-top:8px">Drop or choose an image to classify</div>
-          <img id="imagePreview" class="preview hidden" alt="">
-        </div>
-
-        <div id="modelStatus" class="small" style="margin-top:12px">Loading MobileNet model...</div>
-
-        <div id="predictionsArea" class="hidden">
-          <label style="margin-top:12px">AI guesses</label>
-          <ul id="predList" class="pred-list"></ul>
-
-          <div class="controls">
-            <button id="speakBtn" class="ghost">Speak top guess</button>
-            <button id="correctBtn">AI correct</button>
-            <button id="incorrectBtn" class="secondary">AI incorrect (save)</button>
+      <!-- Main column -->
+      <div>
+        <div class="card">
+          <label>Upload image (single slot)</label>
+          <div class="uploader" id="imageUploader" title="Click to choose image">
+            <input id="imageInput" type="file" accept="image/*">
+            <button id="pickImageBtn" class="ghost">Choose image</button>
+            <div class="small" style="margin-top:8px">Drag & drop or choose an image. Model will classify it (expanded results).</div>
+            <img id="imagePreview" class="preview hidden" alt="preview">
           </div>
 
-          <div id="labelSaveArea" class="hidden" style="margin-top:10px">
-            <input id="correctLabelInput" placeholder="Correct label (exact)">
-            <div class="controls" style="margin-top:8px">
-              <button id="saveLabelBtn">Save labeled image</button>
-              <button id="cancelSaveBtn" class="ghost">Cancel</button>
+          <div id="modelStatus" class="small" style="margin-top:12px">Loading MobileNet model...</div>
+
+          <div id="predictionsArea" class="hidden">
+            <label style="margin-top:12px">AI guesses (full list)</label>
+            <ul id="predList" class="pred-list"></ul>
+
+            <div class="controls">
+              <button id="speakBtn" class="ghost">Speak a guess now</button>
+              <button id="correctBtn">AI correct</button>
+              <button id="incorrectBtn" class="secondary">AI incorrect (save)</button>
+            </div>
+
+            <div id="labelSaveArea" class="hidden" style="margin-top:10px">
+              <input id="correctLabelInput" placeholder="Correct label (exact)">
+              <div class="controls" style="margin-top:8px">
+                <button id="saveLabelBtn">Save labeled image</button>
+                <button id="cancelSaveBtn" class="ghost">Cancel</button>
+              </div>
+            </div>
+
+            <hr style="margin:12px 0">
+
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <button id="startLoopBtn">Start auto-guesses</button>
+              <button id="stopLoopBtn" class="ghost hidden">Stop</button>
+              <div class="small">Delay</div>
+              <input id="minDelay" type="number" min="1" value="2" style="width:70px">
+              <div class="small">to</div>
+              <input id="maxDelay" type="number" min="1" value="5" style="width:70px">
+              <div id="loopStatus" class="status">Stopped</div>
             </div>
           </div>
+        </div>
 
-          <hr style="margin:12px 0">
-
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button id="startLoopBtn">Start auto-guesses</button>
-            <button id="stopLoopBtn" class="ghost hidden">Stop</button>
-            <div class="small">Delay</div>
-            <input id="minDelay" type="number" min="1" value="2" style="width:70px">
-            <div class="small">to</div>
-            <input id="maxDelay" type="number" min="1" value="5" style="width:70px">
-            <div id="loopStatus" class="status">Stopped</div>
+        <div class="card" style="margin-top:12px">
+          <label>Saved clips / uploaded audio</label>
+          <div id="clipsArea" class="small">
+            <div id="clipList" class="clip-list" style="margin-top:8px"></div>
           </div>
         </div>
       </div>
 
-      <!-- Side: audio/video + voice maker -->
+      <!-- Right column -->
       <div>
         <div class="card">
-          <label>Voice source</label>
-
-          <div style="margin-bottom:8px">
-            <div class="small">Upload audio (recommended): short MP3/WAV</div>
-            <input id="audioInput" type="file" accept="audio/*">
-          </div>
-
-          <hr>
-
-          <div style="margin-bottom:8px">
-            <div class="small">Or upload a short video (<=30s & <=10MB recommended)</div>
-            <input id="videoInput" type="file" accept="video/*">
-            <video id="videoPlayer" controls class="hidden" style="width:100%;margin-top:8px"></video>
-            <div id="videoInfo" class="small"></div>
-            <div id="videoWarning" class="notice hidden"></div>
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <input id="segStart" type="number" min="0" step="0.1" placeholder="start (s)" style="width:45%">
-              <input id="segEnd" type="number" min="0" step="0.1" placeholder="end (s)" style="width:45%">
-            </div>
-            <div class="controls" style="margin-top:8px">
-              <button id="extractClipBtn">Extract & match</button>
-              <button id="previewSegBtn" class="ghost">Preview segment</button>
-            </div>
-            <div id="extractStatus" class="small" style="margin-top:8px"></div>
-          </div>
+          <label>Upload audio for voice (recommended)</label>
+          <input id="audioInput" type="file" accept="audio/*" />
+          <div id="extractStatus" class="small" style="margin-top:8px"></div>
         </div>
 
         <div class="card" style="margin-top:12px">
@@ -156,79 +154,73 @@
     </div>
 
     <footer>
-      <div class="small muted">If video extraction still fails, upload an audio clip instead (most reliable). I can also add an upload trim tool or an ffmpeg.wasm option if you want server-like trimming in the browser.</div>
+      <div class="small muted">Want even more labels? I can raise the top-k request (MobileNet) further — tell me how many and I'll update it.</div>
     </footer>
   </div>
 
 <script>
-/*
-  Improvements:
-  - Reject/ask to trim very large video files early (size/duration thresholds).
-  - Prefer captureStream+MediaRecorder for segment recording when supported.
-  - Only attempt decodeAudioData for small files (fallback).
-  - Show clear messages and avoid blocking/long synchronous work.
-  - Keep stable UI and Safari audio enable flow.
+/* Expanded-predictions version:
+   - Requests topK = 100 predictions from MobileNet (more candidates)
+   - Shows the full returned list (no UI truncation)
+   - All core buttons wired and audio upload/speech behave as before
 */
 
-// thresholds (tweakable)
-const MAX_VIDEO_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
-const MAX_VIDEO_DURATION_SEC = 30; // 30 seconds
-const DECODE_FALLBACK_MAX_BYTES = 5 * 1024 * 1024; // decodeAudioData fallback only for <= 5MB
+// Storage keys
+const SCRIPTS_KEY = 'funny_expanded_scripts_v1';
+const CLIPS_KEY = 'funny_expanded_clips_v1';
+const DATASET_KEY = 'funny_expanded_dataset_v1';
+const POINTS_KEY = 'funny_expanded_points_v1';
 
-// storage keys
-const SCRIPTS_KEY = 'funny_stable_scripts_v2';
-const CLIPS_KEY = 'funny_stable_clips_v2';
-const DATASET_KEY = 'funny_stable_dataset_v2';
-const POINTS_KEY = 'funny_stable_points_v2';
-
-// defaults
+// Defaults and helpers
 function defaultScripts(){ return {
   "Shy": { templates: ["Um... I think this might be {label}."], pitch:1.0, rate:1.0 },
   "Sarcastic": { templates: ["{label}? Yeah, right. Maybe."], pitch:1.0, rate:0.95 },
   "Confident": { templates: ["I'm pretty sure this is {label}."], pitch:1.0, rate:1.1 }
-};}
+}; }
 function loadScripts(){ try { const raw = localStorage.getItem(SCRIPTS_KEY); return raw ? JSON.parse(raw) : defaultScripts(); } catch(e){ return defaultScripts(); } }
-function saveScripts(s){ localStorage.setItem(SCRIPTS_KEY, JSON.stringify(s)); }
+function saveScripts(v){ localStorage.setItem(SCRIPTS_KEY, JSON.stringify(v)); }
 function loadClips(){ try { return JSON.parse(localStorage.getItem(CLIPS_KEY) || '{}'); } catch(e){ return {}; } }
-function saveClips(c){ localStorage.setItem(CLIPS_KEY, JSON.stringify(c)); }
+function saveClips(v){ localStorage.setItem(CLIPS_KEY, JSON.stringify(v)); }
 function loadDataset(){ try { return JSON.parse(localStorage.getItem(DATASET_KEY) || '{}'); } catch(e){ return {}; } }
-function saveDataset(d){ localStorage.setItem(DATASET_KEY, JSON.stringify(d)); }
+function saveDataset(v){ localStorage.setItem(DATASET_KEY, JSON.stringify(v)); }
 function loadPoints(){ return parseInt(localStorage.getItem(POINTS_KEY) || '0', 10); }
-function savePoints(n){ localStorage.setItem(POINTS_KEY, String(n)); document.getElementById('pointsBadge').textContent = loadPoints(); }
+function savePoints(n){ localStorage.setItem(POINTS_KEY, String(n)); document.getElementById('pointsBadge').textContent = n; }
 
-// model
+// Model
 let net = null;
 async function loadModel(){
-  document.getElementById('modelStatus').textContent = 'Loading MobileNet model...';
+  const s = document.getElementById('modelStatus');
+  s.textContent = 'Loading MobileNet model...';
   try {
     net = await mobilenet.load({version:2, alpha:1.0});
-    document.getElementById('modelStatus').textContent = 'Model loaded.';
-  } catch(e){
-    document.getElementById('modelStatus').textContent = 'Model load failed: ' + (e.message || e);
+    s.textContent = 'Model loaded.';
+  } catch(err){
+    s.textContent = 'Model load failed: ' + (err.message || err);
+    console.error(err);
   }
 }
 
-// audio / TTS
-let AVAILABLE_VOICES = [];
+// TTS
 let audioEnabled = false;
-function ensureVoicesLoaded(timeoutMs=1500){
-  return new Promise((resolve) => {
+let AVAILABLE_VOICES = [];
+function ensureVoicesLoaded(timeoutMs = 1500){
+  return new Promise(resolve => {
     const v = window.speechSynthesis.getVoices();
     if(v && v.length){ AVAILABLE_VOICES = v; return resolve(v); }
-    const onvoices = ()=>{ const vv = window.speechSynthesis.getVoices(); AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onvoices); resolve(vv); };
+    const onvoices = () => { const vv = window.speechSynthesis.getVoices(); AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onvoices); resolve(vv); };
     window.speechSynthesis.addEventListener('voiceschanged', onvoices);
     setTimeout(()=>{ const vv = window.speechSynthesis.getVoices() || []; AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onvoices); resolve(vv); }, timeoutMs);
   });
 }
 function pickVoiceIndex(){
-  for(let i=0;i<AVAILABLE_VOICES.length;i++){ const v=AVAILABLE_VOICES[i]; if(/en/i.test(v.lang)||/english/i.test(v.name)) return i; }
+  for(let i=0;i<AVAILABLE_VOICES.length;i++){ const v = AVAILABLE_VOICES[i]; if(/en/i.test(v.lang) || /english/i.test(v.name)) return i; }
   return AVAILABLE_VOICES.length ? 0 : null;
 }
 async function speakText(text, rate=1.0, pitch=1.0){
   if(!audioEnabled) return;
   if(!('speechSynthesis' in window)) return;
   await ensureVoicesLoaded();
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     try {
       const u = new SpeechSynthesisUtterance(String(text));
       u.rate = Number.isFinite(rate) ? rate : 1.0;
@@ -238,15 +230,16 @@ async function speakText(text, rate=1.0, pitch=1.0){
       u.onend = () => resolve();
       u.onerror = () => resolve();
       window.speechSynthesis.speak(u);
-    } catch(e){ console.warn('speak failed', e); resolve(); }
+    } catch(err){ console.warn(err); resolve(); }
   });
 }
 
-// playback helpers
+// Playback & templates
 function playClipDataUrl(dataUrl){ return new Promise(res => { const a = new Audio(dataUrl); a.onended = ()=>res(); a.onerror = ()=>res(); a.play().catch(()=>res()); }); }
-function buildSequenceFromTemplate(template,label){
-  const seq=[]; const rx=/\{clip:([^}]+)\}/g; let last=0,m;
-  while((m=rx.exec(template))!==null){
+function buildSequenceFromTemplate(template, label){
+  const seq = []; const rx = /\{clip:([^}]+)\}/g;
+  let last = 0, m;
+  while((m = rx.exec(template)) !== null){
     const before = template.slice(last, m.index);
     if(before.trim()) seq.push({type:'tts', text: before.replace(/\{label\}/g, label)});
     seq.push({type:'clip', clip: m[1].trim()});
@@ -258,414 +251,211 @@ function buildSequenceFromTemplate(template,label){
 }
 async function playSequence(seq, rate=1.0, pitch=1.0){
   for(const item of seq){
-    if(item.type==='clip'){
+    if(item.type === 'clip'){
       const clips = loadClips();
-      const dataUrl = clips[item.clip];
-      if(dataUrl) await playClipDataUrl(dataUrl);
-      else await new Promise(r=>setTimeout(r,120));
-    } else if(item.type==='tts'){
+      const url = clips[item.clip];
+      if(url) await playClipDataUrl(url);
+      else await new Promise(r => setTimeout(r, 120));
+    } else {
       const t = (item.text||'').trim();
-      if(t) await speakText(t, rate, pitch);
-      else await new Promise(r=>setTimeout(r,80));
+      if(t) await speakText(t, rate, pitch); else await new Promise(r => setTimeout(r,80));
     }
   }
 }
 
-// pitch estimate (simple)
-async function estimatePitchFromAudioBuffer(audioBuffer){
-  try {
-    const fs = audioBuffer.sampleRate;
-    const data = audioBuffer.getChannelData(0);
-    const N = Math.min(data.length, fs);
-    const buf = data.subarray(0, N);
-    let bestOffset=-1, bestVal=0;
-    for(let offset=20; offset<800; offset++){
-      let s=0;
-      for(let i=0;i<N-offset;i++) s += Math.abs(buf[i] - buf[i+offset]);
-      const val = 1/(1+s);
-      if(val>bestVal){ bestVal=val; bestOffset=offset; }
-    }
-    if(bestOffset<=0) return null;
-    return fs / bestOffset;
-  } catch(e){ return null; }
-}
-
-// decode audio via OfflineAudioContext / AudioContext decodeAudioData (small files only)
-async function decodeAudioBufferFromFile(file){
-  const arr = await file.arrayBuffer();
-  // Try OfflineAudioContext decode first, then fallback to AudioContext
-  try {
-    const octx = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(1, 44100*2, 44100);
-    const buf = await new Promise((res, rej) => octx.decodeAudioData(arr.slice(0), decoded => res(decoded), err => rej(err)));
-    return buf;
-  } catch(err){
-    try {
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
-      const buf = await actx.decodeAudioData(arr.slice(0));
-      return buf;
-    } catch(e){ console.warn('decodeAudioData failed', e); return null; }
-  }
-}
-
-// convert AudioBuffer -> WAV blob
-function audioBufferToWavBlob(buffer){
-  const numChannels = buffer.numberOfChannels;
-  const sampleRate = buffer.sampleRate;
-  const length = buffer.length * numChannels * 2 + 44;
-  const arrayBuffer = new ArrayBuffer(length);
-  const view = new DataView(arrayBuffer);
-  function writeString(view, offset, string){ for(let i=0;i<string.length;i++) view.setUint8(offset+i,string.charCodeAt(i)); }
-  let offset = 0;
-  writeString(view, offset, 'RIFF'); offset += 4;
-  view.setUint32(offset, 36 + buffer.length * numChannels * 2, true); offset += 4;
-  writeString(view, offset, 'WAVE'); offset += 4;
-  writeString(view, offset, 'fmt '); offset += 4;
-  view.setUint32(offset, 16, true); offset += 4;
-  view.setUint16(offset, 1, true); offset += 2;
-  view.setUint16(offset, numChannels, true); offset += 2;
-  view.setUint32(offset, sampleRate, true); offset += 4;
-  view.setUint32(offset, sampleRate * numChannels * 2, true); offset += 4;
-  view.setUint16(offset, numChannels * 2, true); offset += 2;
-  view.setUint16(offset, 16, true); offset += 2;
-  writeString(view, offset, 'data'); offset += 4;
-  view.setUint32(offset, buffer.length * numChannels * 2, true); offset += 4;
-  // interleave & write
-  let idx = 0;
-  for(let i=0;i<buffer.length;i++){
-    for(let ch=0; ch<numChannels; ch++){
-      const sample = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-      offset += 2;
-      idx++;
-    }
-  }
-  return new Blob([view], {type:'audio/wav'});
-}
-
-function blobToDataURL(blob){ return new Promise((res, rej)=>{ const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); }); }
-
-// small badness injection
-function applySmallBadness(preds){
-  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
-  let labels = preds.map(p=>[p[0],p[1]]);
-  if(Math.random()<0.35){
-    const fake = commons[Math.floor(Math.random()*commons.length)];
-    labels[0] = [fake, 0.10 + Math.random()*0.08];
-    for(let i=1;i<labels.length;i++) labels[i][1] = Math.max(0.01, labels[i][1]*0.6);
-  } else {
-    labels = labels.map(([lbl,score]) => [lbl, Math.max(0.05, score*0.5)]);
-  }
-  if(Math.random() < 0.25 && labels.length>2){ const t=labels[1]; labels[1]=labels[2]; labels[2]=t; }
-  return labels;
-}
-
-// guess loop
-let guessLoopRunning=false, guessCandidates=[], guessIndex=0, lastGuessed=null;
-function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
-function buildGuessCandidates(preds){
-  const commons=["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box"];
-  const labels = preds.map(p=>p[0]); let out=labels.slice(); commons.forEach(c=>{ if(!out.includes(c) && out.length < Math.max(6, labels.length+3)) out.push(c); }); return shuffleArray(out);
+// Guessing
+let lastPredictions = [];
+let loopRunning = false;
+let pool = [], poolIndex = 0, lastGuessed = null;
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
+function buildPool(preds){
+  const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box","phone","book","person","building","flower","plant","hat","suitcase"];
+  const labels = preds.map(p => p[0]);
+  const merged = labels.slice();
+  for(const c of commons){ if(!merged.includes(c) && merged.length < Math.max(150, labels.length + 20)) merged.push(c); }
+  return shuffle(merged);
 }
 function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-async function startGuessLoop(){
-  if(guessLoopRunning) return;
-  if(!lastPredictions || lastPredictions.length===0){ alert('Upload an image first'); return; }
-  if(!audioEnabled){ alert('Tap Enable audio first'); return; }
-  guessCandidates = buildGuessCandidates(lastPredictions);
-  guessIndex = 0; guessLoopRunning = true;
-  document.getElementById('startLoopBtn').classList.add('hidden'); document.getElementById('stopLoopBtn').classList.remove('hidden'); document.getElementById('loopStatus').textContent='Running';
-  while(guessLoopRunning){
-    if(guessIndex >= guessCandidates.length){ guessCandidates = shuffleArray(guessCandidates.slice()); guessIndex = 0; }
-    let g = guessCandidates[guessIndex++];
-    if(g === lastGuessed && guessCandidates.length>1) g = guessCandidates[guessIndex++ % guessCandidates.length];
-    lastGuessed = g;
+async function startAutoLoop(){
+  if(loopRunning) return;
+  if(!lastPredictions || lastPredictions.length === 0){ alert('Upload an image first'); return; }
+  if(!audioEnabled){ alert('Enable audio first'); return; }
+  pool = buildPool(lastPredictions); poolIndex = 0; loopRunning = true;
+  document.getElementById('startLoopBtn').classList.add('hidden'); document.getElementById('stopLoopBtn').classList.remove('hidden'); document.getElementById('loopStatus').textContent = 'Running';
+  while(loopRunning){
+    if(poolIndex >= pool.length){ pool = shuffle(pool.slice()); poolIndex = 0; }
+    let guess = pool[poolIndex++];
+    if(guess === lastGuessed && pool.length > 1) guess = pool[poolIndex++ % pool.length];
+    lastGuessed = guess;
     const scriptName = document.getElementById('vmScriptList').value;
     const script = loadScripts()[scriptName] || null;
     const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
-    const seq = buildSequenceFromTemplate(tpl, g);
-    const pitch = script ? (script.pitch||1.0) : 1.0;
-    const rate = script ? (script.rate||1.0) : 1.0;
+    const seq = buildSequenceFromTemplate(tpl, guess);
+    const pitch = script ? (script.pitch || 1.0) : 1.0;
+    const rate = script ? (script.rate || 1.0) : 1.0;
     await playSequence(seq, rate, pitch);
-    if(!guessLoopRunning) break;
-    let minD = parseFloat(document.getElementById('minDelay').value) || 2;
-    let maxD = parseFloat(document.getElementById('maxDelay').value) || 5;
-    if(maxD < minD) { const t=minD; minD=maxD; maxD=t; }
-    const delay = minD + Math.random()*(maxD - minD);
+    if(!loopRunning) break;
+    const minD = Math.max(1, parseFloat(document.getElementById('minDelay').value) || 2);
+    const maxD = Math.max(minD, parseFloat(document.getElementById('maxDelay').value) || 5);
+    const delay = minD + Math.random() * (maxD - minD);
     const start = Date.now();
-    while(guessLoopRunning && Date.now() - start < delay*1000){ await sleep(200); }
+    while(loopRunning && Date.now() - start < delay*1000) await sleep(200);
   }
-  guessLoopRunning = false;
-  document.getElementById('startLoopBtn').classList.remove('hidden'); document.getElementById('stopLoopBtn').classList.add('hidden'); document.getElementById('loopStatus').textContent='Stopped';
+  loopRunning = false;
+  document.getElementById('startLoopBtn').classList.remove('hidden'); document.getElementById('stopLoopBtn').classList.add('hidden'); document.getElementById('loopStatus').textContent = 'Stopped';
 }
-function stopGuessLoop(){ guessLoopRunning = false; }
+function stopAutoLoop(){ loopRunning = false; }
 
-// UI interactions
-let currentImageEl=null, lastPredictions=[];
-function renderPredictions(preds){ const ul=document.getElementById('predList'); ul.innerHTML=''; preds.forEach((p,i)=>{ const li=document.createElement('li'); li.innerHTML=`<strong>${i+1}. ${escapeHtml(p[0])}</strong> — ${(p[1]*100).toFixed(1)}%`; ul.appendChild(li); }); }
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+// Small playful badness applied to model outputs
+function applySmallBadness(preds){
+  const commons = ["banana","chair","shoe","cat","dog","tree","car"];
+  let out = preds.map(p => [p[0], Math.max(0.01, p[1] * 0.6)]);
+  if(Math.random() < 0.25) out.unshift([commons[Math.floor(Math.random()*commons.length)], 0.08]);
+  return out;
+}
 
-function populateUI(){ const scripts=loadScripts(); const sel=document.getElementById('vmScriptList'); sel.innerHTML=''; Object.keys(scripts).sort().forEach(k => { const o=document.createElement('option'); o.value=k; o.textContent=k; sel.appendChild(o); }); if(sel.options.length) sel.value=sel.options[0].value; loadScriptEditor(); refreshClipUI(); document.getElementById('pointsBadge').textContent = loadPoints(); }
+// UI helpers
+function renderPredictions(preds){
+  const ul = document.getElementById('predList'); ul.innerHTML = '';
+  for(const [label, score] of preds){
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${escapeHtml(label)}</strong> — ${(score*100).toFixed(1)}%`;
+    ul.appendChild(li);
+  }
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-function loadScriptEditor(){ const name=document.getElementById('vmScriptList').value; const scripts=loadScripts(); if(!name||!scripts[name]) return; const v=scripts[name]; document.getElementById('vmName').value = name; document.getElementById('vmTemplates').value = (v.templates||[]).join('\n'); document.getElementById('vmPitch').value = v.pitch || 1.0; document.getElementById('vmRate').value = v.rate || 1.0; }
+// Clips UI
+function refreshClips(){
+  const node = document.getElementById('clipList'); node.innerHTML = '';
+  const clips = loadClips(); const keys = Object.keys(clips).sort();
+  if(keys.length === 0){ node.innerHTML = '<div class="small muted">No clips</div>'; return; }
+  for(const k of keys){
+    const div = document.createElement('div');
+    div.innerHTML = `<strong>${escapeHtml(k)}</strong> — <a href="#" data-play="${k}">Play</a> <a href="#" data-del="${k}" style="color:#ef4444;margin-left:8px">Delete</a>`;
+    node.appendChild(div);
+  }
+  node.querySelectorAll('[data-play]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const k = a.getAttribute('data-play'); const url = loadClips()[k]; if(url) new Audio(url).play(); }));
+  node.querySelectorAll('[data-del]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const k = a.getAttribute('data-del'); if(!confirm('Delete '+k+'?')) return; const c = loadClips(); delete c[k]; saveClips(c); refreshClips(); }));
+}
 
-function refreshClipUI(){ const container = document.getElementById('clipContainer'); container.innerHTML=''; const clips = loadClips(); const keys = Object.keys(clips).sort(); if(keys.length===0){ container.innerHTML='<div class="small muted">No clips saved yet.</div>'; return; } keys.forEach(k=>{ const row=document.createElement('div'); row.style.display='flex'; row.style.justifyContent='space-between'; row.style.alignItems='center'; row.style.padding='6px 0'; row.innerHTML = `<div><strong>${escapeHtml(k)}</strong></div>`; const right=document.createElement('div'); const play=document.createElement('a'); play.href='#'; play.textContent='Play'; play.addEventListener('click', e=>{ e.preventDefault(); new Audio(clips[k]).play(); }); const del=document.createElement('a'); del.href='#'; del.textContent='Delete'; del.style.marginLeft='10px'; del.style.color='#ef4444'; del.addEventListener('click', e=>{ e.preventDefault(); if(!confirm('Delete '+k+'?')) return; const c=loadClips(); delete c[k]; saveClips(c); refreshClipUI(); }); right.appendChild(play); right.appendChild(del); row.appendChild(right); container.appendChild(row); }); }
-
-// DOM wiring
-document.addEventListener('DOMContentLoaded', async ()=>{
+// Audio upload handling & pitch estimate
+document.addEventListener('DOMContentLoaded', async () => {
   if(!localStorage.getItem(SCRIPTS_KEY)) saveScripts(defaultScripts());
-  populateUI();
+  refreshClips(); populateScripts();
   loadModel();
 
-  document.getElementById('enableAudioBtn').addEventListener('click', async ()=>{
-    audioEnabled = true; document.getElementById('audioStatus').textContent = 'Audio: enabled'; await ensureVoicesLoaded(2000); try{ await speakText('Audio enabled',1.0,1.0); }catch(e){console.warn(e);}
+  // enable audio
+  document.getElementById('enableAudioBtn').addEventListener('click', async () => {
+    audioEnabled = true; document.getElementById('audioStatus').textContent = 'Audio: enabled'; await ensureVoicesLoaded(2000);
+    try { await speakText('Audio enabled', 1.0, 1.0); } catch(e){}
   });
 
-  // image upload classify
-  document.getElementById('pickImageBtn').addEventListener('click', ()=> document.getElementById('imageInput').click());
-  document.getElementById('imageInput').addEventListener('change', async (ev)=>{
+  // image upload
+  document.getElementById('pickImageBtn').addEventListener('click', () => document.getElementById('imageInput').click());
+  document.getElementById('imageInput').addEventListener('change', async (ev) => {
     const f = ev.target.files && ev.target.files[0]; if(!f) return;
     try {
       const url = URL.createObjectURL(f);
-      const img = new Image();
-      img.src = url;
-      await new Promise((res, rej)=>{ img.onload = res; img.onerror = rej; });
-      currentImageEl = img; document.getElementById('imagePreview').src = img.src; document.getElementById('imagePreview').classList.remove('hidden');
-      if(guessLoopRunning) stopGuessLoop();
+      const img = new Image(); img.src = url; await new Promise((res, rej)=>{ img.onload = res; img.onerror = rej; });
+      document.getElementById('imagePreview').src = img.src; document.getElementById('imagePreview').classList.remove('hidden');
+      stopAutoLoop();
       if(!net) await loadModel();
       document.getElementById('modelStatus').textContent = 'Classifying...';
-      const raw = await net.classify(img, 5);
-      const preds = raw.map(r=>[r.className, r.probability]);
+      // request many predictions (topK 100)
+      const raw = await net.classify(img, 100);
+      const preds = raw.map(r=>[r.className, r.probability || 0]);
       lastPredictions = applySmallBadness(preds);
       renderPredictions(lastPredictions);
       document.getElementById('predictionsArea').classList.remove('hidden');
       document.getElementById('modelStatus').textContent = 'Ready';
-    } catch(err){ console.error(err); alert('Image error: ' + (err.message||err)); }
+    } catch(err){ console.error('image classify error', err); alert('Image error: ' + (err.message || err)); }
   });
 
-  // speak top
-  document.getElementById('speakBtn').addEventListener('click', async ()=>{
-    if(!lastPredictions||!lastPredictions[0]){ alert('No prediction'); return; }
+  // speak now (random pick from expanded set)
+  document.getElementById('speakBtn').addEventListener('click', async () => {
+    if(!lastPredictions || lastPredictions.length === 0){ alert('No predictions yet'); return; }
     if(!audioEnabled){ alert('Enable audio first'); return; }
-    const top = lastPredictions[0][0]; const scriptName = document.getElementById('vmScriptList').value; const script = loadScripts()[scriptName] || null;
+    const pick = lastPredictions[Math.floor(Math.random() * lastPredictions.length)][0];
+    const scriptName = document.getElementById('vmScriptList').value; const script = loadScripts()[scriptName] || null;
     const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
-    const seq = buildSequenceFromTemplate(tpl, top);
-    const pitch = script ? (script.pitch||1.0) : 1.0; const rate = script ? (script.rate||1.0) : 1.0;
+    const seq = buildSequenceFromTemplate(tpl, pick); const pitch = script ? (script.pitch||1.0) : 1.0; const rate = script ? (script.rate||1.0) : 1.0;
     await playSequence(seq, rate, pitch);
   });
 
-  // correct/incorrect/save
-  document.getElementById('correctBtn').addEventListener('click', ()=>{ savePoints(loadPoints()+1); alert('Point awarded!'); });
-  document.getElementById('incorrectBtn').addEventListener('click', ()=> document.getElementById('labelSaveArea').classList.remove('hidden'));
-  document.getElementById('cancelSaveBtn').addEventListener('click', ()=>{ document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value = ''; });
-  document.getElementById('saveLabelBtn').addEventListener('click', ()=> {
-    const label = (document.getElementById('correctLabelInput').value||'').trim(); if(!label){ alert('Enter label'); return; } if(!currentImageEl){ alert('No image'); return; }
-    const canvas = document.createElement('canvas'); canvas.width = currentImageEl.naturalWidth; canvas.height = currentImageEl.naturalHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(currentImageEl,0,0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9); const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({data:dataUrl,t:Date.now()}); saveDataset(ds); alert('Saved labeled image under: ' + label); document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value=''; 
+  // start/stop
+  document.getElementById('startLoopBtn').addEventListener('click', startAutoLoop);
+  document.getElementById('stopLoopBtn').addEventListener('click', stopAutoLoop);
+
+  // correct / incorrect save
+  document.getElementById('correctBtn').addEventListener('click', () => { savePoints(loadPoints()+1); alert('Point awarded!'); });
+  document.getElementById('incorrectBtn').addEventListener('click', () => document.getElementById('labelSaveArea').classList.remove('hidden'));
+  document.getElementById('cancelSaveBtn').addEventListener('click', () => { document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value = ''; });
+  document.getElementById('saveLabelBtn').addEventListener('click', () => {
+    const label = (document.getElementById('correctLabelInput').value || '').trim(); if(!label){ alert('Enter a label'); return; }
+    const img = document.getElementById('imagePreview'); if(!img || img.classList.contains('hidden')){ alert('No image'); return; }
+    const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9); const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({data:dataUrl,t:Date.now()}); saveDataset(ds);
+    alert('Saved labeled image under: ' + label); document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value = '';
   });
 
-  // loop controls
-  document.getElementById('startLoopBtn').addEventListener('click', startGuessLoop);
-  document.getElementById('stopLoopBtn').addEventListener('click', stopGuessLoop);
-
-  // audio upload (preferred)
-  document.getElementById('audioInput').addEventListener('change', async (ev)=>{
+  // audio upload
+  document.getElementById('audioInput').addEventListener('change', async (ev) => {
     const f = ev.target.files && ev.target.files[0]; if(!f) return;
     try {
       document.getElementById('extractStatus').textContent = 'Decoding audio...';
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
       const arr = await f.arrayBuffer();
+      const actx = new (window.AudioContext || window.webkitAudioContext)();
       const buffer = await actx.decodeAudioData(arr.slice(0));
       const wavBlob = audioBufferToWavBlob(buffer);
       const dataUrl = await blobToDataURL(wavBlob);
-      const name = 'audio_' + Date.now();
-      const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipUI();
+      const name = (f.name || 'audio') + '_' + Date.now();
+      const clips = loadClips(); clips[name] = dataUrl; saveClips(clips);
+      refreshClips();
       const pitchHz = await estimatePitchFromAudioBuffer(buffer);
       let suggestedPitch = 1.0, suggestedRate = 1.0;
-      if(pitchHz && pitchHz>0){ const p = Math.max(80, Math.min(400,pitchHz)); const norm=(p-100)/(300-100); suggestedPitch=0.8 + Math.max(0,Math.min(1,norm))*0.7; suggestedRate=0.9 + Math.max(0,Math.min(1,norm))*0.3; }
+      if(pitchHz && pitchHz>0){ const p = Math.max(80,Math.min(400,pitchHz)); const norm=(p-100)/(300-100); suggestedPitch=0.8 + Math.max(0,Math.min(1,norm))*0.7; suggestedRate=0.9 + Math.max(0,Math.min(1,norm))*0.3; }
       document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
       document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
       document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
-      const scripts = loadScripts();
-      if(!scripts['VideoVoice']){ scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateUI(); }
-    } catch(err){ console.error('audio decode failed', err); document.getElementById('extractStatus').textContent = 'Audio decode failed'; alert('Audio decode failed: ' + (err.message || err)); }
+      const scripts = loadScripts(); if(!scripts['AudioVoice']){ scripts['AudioVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateScripts(); }
+    } catch(err){ console.error('audio decode error', err); document.getElementById('extractStatus').textContent = 'Audio decode failed'; alert('Audio failed: ' + (err.message || err)); }
   });
 
-  // video upload: read metadata and warn if too long/large
-  let selectedVideoFile = null;
-  document.getElementById('videoInput').addEventListener('change', async (ev)=>{
-    const f = ev.target.files && ev.target.files[0]; if(!f) return;
-    selectedVideoFile = f;
-    const videoPlayer = document.getElementById('videoPlayer');
-    videoPlayer.src = URL.createObjectURL(f);
-    videoPlayer.classList.remove('hidden');
-    document.getElementById('videoWarning').classList.add('hidden');
-    document.getElementById('videoInfo').textContent = `File size: ${(f.size/1024/1024).toFixed(2)} MB — loading metadata...`;
-    // load metadata
-    await new Promise((res, rej) => {
-      const onLoaded = ()=>{ videoPlayer.removeEventListener('loadedmetadata', onLoaded); res(); };
-      videoPlayer.addEventListener('loadedmetadata', onLoaded);
-    });
-    const dur = videoPlayer.duration || 0;
-    document.getElementById('videoInfo').textContent = `Duration: ${dur.toFixed(1)} s — size ${(f.size/1024/1024).toFixed(2)} MB`;
-    // warn / reject if too large/long
-    if(f.size > MAX_VIDEO_SIZE_BYTES || dur > MAX_VIDEO_DURATION_SEC){
-      document.getElementById('videoWarning').classList.remove('hidden');
-      document.getElementById('videoWarning').textContent = `Warning: video is large (${(f.size/1024/1024).toFixed(2)} MB) or long (${dur.toFixed(1)} s). Extraction may fail or freeze. Please upload a shorter clip (<= ${MAX_VIDEO_DURATION_SEC}s and <= ${(MAX_VIDEO_SIZE_BYTES/1024/1024).toFixed(0)} MB) or upload an audio file instead.`;
-    } else {
-      document.getElementById('videoWarning').classList.add('hidden');
-    }
+  // script editor
+  document.getElementById('vmSave').addEventListener('click', () => {
+    const name = (document.getElementById('vmName').value || '').trim(); if(!name){ alert('Provide name'); return; }
+    const templates = (document.getElementById('vmTemplates').value || '').split('\n').map(s => s.trim()).filter(Boolean); if(templates.length === 0){ alert('Add at least one template'); return; }
+    const pitch = parseFloat(document.getElementById('vmPitch').value) || 1.0; const rate = parseFloat(document.getElementById('vmRate').value) || 1.0;
+    const s = loadScripts(); s[name] = { templates, pitch, rate }; saveScripts(s); populateScripts(); alert('Saved script: ' + name);
   });
-
-  // preview segment (video)
-  document.getElementById('previewSegBtn').addEventListener('click', ()=> {
-    const start = parseFloat(document.getElementById('segStart').value || 0);
-    const end = parseFloat(document.getElementById('segEnd').value || 0);
-    const videoPlayer = document.getElementById('videoPlayer');
-    if(!videoPlayer.src){ alert('No video'); return; }
-    if(isNaN(start) || isNaN(end) || end<=start){ alert('Invalid times'); return; }
-    videoPlayer.currentTime = start;
-    videoPlayer.play();
-    const stopFn = ()=> { if(videoPlayer.currentTime >= end - 0.05){ videoPlayer.pause(); videoPlayer.removeEventListener('timeupdate', stopFn); } };
-    videoPlayer.addEventListener('timeupdate', stopFn);
-  });
-
-  // extract clip button (safe logic)
-  document.getElementById('extractClipBtn').addEventListener('click', async ()=>{
-    const start = parseFloat(document.getElementById('segStart').value || 0);
-    const end = parseFloat(document.getElementById('segEnd').value || 0);
-    const videoPlayer = document.getElementById('videoPlayer');
-    if(!videoPlayer.src && (!document.getElementById('audioInput').files || !document.getElementById('audioInput').files.length)){
-      alert('Please upload audio or a short video first.');
-      return;
-    }
-    if(isNaN(start) || isNaN(end) || end<=start){ alert('Invalid start/end'); return; }
-    document.getElementById('extractStatus').textContent = 'Extracting...'; 
-    // If audio file present, recommend using it (already handled earlier)
-    if(document.getElementById('audioInput').files && document.getElementById('audioInput').files.length){
-      document.getElementById('extractStatus').textContent = 'Audio file already uploaded and processed. Use that clip or create a script.';
-      return;
-    }
-    const file = selectedVideoFile;
-    if(!file){ alert('No video file loaded'); return; }
-    // safety checks again
-    if(file.size > MAX_VIDEO_SIZE_BYTES || (videoPlayer.duration && videoPlayer.duration > MAX_VIDEO_DURATION_SEC)){
-      document.getElementById('extractStatus').textContent = 'Video too large or long — please trim locally or upload audio instead.';
-      alert('Video too large/long. Trim it to <= ' + MAX_VIDEO_DURATION_SEC + 's or upload audio.');
-      return;
-    }
-    // Prefer captureStream+MediaRecorder (records only the segment)
-    if(videoPlayer.captureStream && typeof MediaRecorder !== 'undefined'){
-      try {
-        // we will seek to start, play and record until end
-        const stream = videoPlayer.captureStream();
-        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm';
-        const recorder = new MediaRecorder(stream, {mimeType});
-        const chunks = [];
-        recorder.ondataavailable = (e) => { if(e.data && e.data.size) chunks.push(e.data); };
-        recorder.onerror = (e) => { console.warn('recorder error', e); };
-        // prepare
-        videoPlayer.currentTime = Math.max(0, start);
-        await new Promise((res) => {
-          const onseek = () => { videoPlayer.removeEventListener('seeked', onseek); res(); };
-          videoPlayer.addEventListener('seeked', onseek);
-        });
-        // start playback and recorder
-        recorder.start();
-        videoPlayer.play();
-        // stop when we reach end
-        await new Promise((res) => {
-          const onTime = () => {
-            if(videoPlayer.currentTime >= end - 0.02 || videoPlayer.ended){
-              videoPlayer.pause();
-              videoPlayer.removeEventListener('timeupdate', onTime);
-              try { recorder.stop(); } catch(e){ console.warn(e); }
-              res();
-            }
-          };
-          videoPlayer.addEventListener('timeupdate', onTime);
-        });
-        // wait for recorder stop event to fire and dataavailable handled
-        await new Promise((res) => { recorder.onstop = ()=>res(); });
-        // create blob and dataURL
-        const blob = new Blob(chunks, {type: chunks[0]?.type || mimeType});
-        const dataUrl = await blobToDataURL(blob);
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const arrayBuffer = await blob.arrayBuffer();
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
-        const name = 'video_clip_' + Date.now();
-        const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipUI();
-        // pitch estimate and suggestions
-        const pitchHz = await estimatePitchFromAudioBuffer(audioBuffer);
-        let suggestedPitch=1.0, suggestedRate=1.0;
-        if(pitchHz && pitchHz>0){ const p = Math.max(80,Math.min(400,pitchHz)); const norm=(p-100)/(300-100); suggestedPitch=0.8 + Math.max(0,Math.min(1,norm))*0.7; suggestedRate=0.9 + Math.max(0,Math.min(1,norm))*0.3; }
-        document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
-        document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
-        document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
-        const scripts = loadScripts();
-        if(!scripts['VideoVoice']){ scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateUI(); }
-        return;
-      } catch(err){
-        console.warn('captureStream extraction failed', err);
-        document.getElementById('extractStatus').textContent = 'captureStream extraction failed; trying decode fallback (if file small)...';
-      }
-    }
-    // fallback: decodeAudioData only for small files
-    if(file.size <= DECODE_FALLBACK_MAX_BYTES){
-      try {
-        const audioBuffer = await decodeAudioBufferFromFile(file);
-        if(!audioBuffer){ document.getElementById('extractStatus').textContent = 'decodeAudioData failed; upload an audio file instead.'; return; }
-        // slice between start/end
-        const sr = audioBuffer.sampleRate;
-        const sSample = Math.max(0, Math.floor(start*sr));
-        const eSample = Math.min(audioBuffer.length, Math.floor(end*sr));
-        const len = Math.max(0, eSample - sSample);
-        const newBuf = new (window.AudioContext || window.webkitAudioContext)().createBuffer(audioBuffer.numberOfChannels, len, sr);
-        for(let ch=0; ch<audioBuffer.numberOfChannels; ch++){
-          const src = audioBuffer.getChannelData(ch).subarray(sSample, eSample);
-          newBuf.copyToChannel(src, ch, 0);
-        }
-        const wavBlob = audioBufferToWavBlob(newBuf);
-        const dataUrl = await blobToDataURL(wavBlob);
-        const name = 'video_clip_' + Date.now();
-        const clips = loadClips(); clips[name] = dataUrl; saveClips(clips); refreshClipUI();
-        const pitchHz = await estimatePitchFromAudioBuffer(newBuf);
-        let suggestedPitch=1.0, suggestedRate=1.0;
-        if(pitchHz && pitchHz>0){ const p=Math.max(80,Math.min(400,pitchHz)); const norm=(p-100)/(300-100); suggestedPitch=0.8 + Math.max(0,Math.min(1,norm))*0.7; suggestedRate=0.9 + Math.max(0,Math.min(1,norm))*0.3; }
-        document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
-        document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
-        document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
-        const scripts = loadScripts();
-        if(!scripts['VideoVoice']){ scripts['VideoVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateUI(); }
-        return;
-      } catch(err){
-        console.error('decode fallback failed', err);
-        document.getElementById('extractStatus').textContent = 'Decode fallback failed; upload a short audio clip instead.';
-        return;
-      }
-    } else {
-      document.getElementById('extractStatus').textContent = 'Video too large for safe decode. Please trim locally or upload an audio clip.';
-      alert('Video too large for safe extraction in this browser. Trim to <= ' + MAX_VIDEO_DURATION_SEC + 's or <= ' + (DECODE_FALLBACK_MAX_BYTES/1024/1024).toFixed(1) + 'MB and try again, or upload audio.');
-      return;
-    }
-  });
-
-  // voice maker
-  document.getElementById('vmScriptList').addEventListener('change', loadScriptEditor);
-  document.getElementById('vmSave').addEventListener('click', ()=>{
-    const name = (document.getElementById('vmName').value||'').trim(); if(!name){ alert('Provide name'); return; }
-    const templates = (document.getElementById('vmTemplates').value||'').split('\n').map(s=>s.trim()).filter(Boolean);
-    if(templates.length===0){ alert('Add at least one template'); return; }
-    const pitch = parseFloat(document.getElementById('vmPitch').value) || 1.0;
-    const rate = parseFloat(document.getElementById('vmRate').value) || 1.0;
-    const scripts = loadScripts(); scripts[name] = { templates, pitch, rate }; saveScripts(scripts); populateUI(); alert('Saved script: ' + name);
-  });
-  document.getElementById('vmNew').addEventListener('click', ()=>{ document.getElementById('vmName').value='NewScript'; document.getElementById('vmTemplates').value='I think this is {label}.'; document.getElementById('vmPitch').value='1.0'; document.getElementById('vmRate').value='1.0'; });
-  document.getElementById('vmDelete').addEventListener('click', ()=>{ const name = (document.getElementById('vmScriptList').value||'').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const scripts=loadScripts(); delete scripts[name]; saveScripts(scripts); populateUI(); alert('Deleted ' + name); });
+  document.getElementById('vmNew').addEventListener('click', () => { document.getElementById('vmName').value='NewScript'; document.getElementById('vmTemplates').value='I think this is {label}.'; document.getElementById('vmPitch').value='1.0'; document.getElementById('vmRate').value='1.0'; });
+  document.getElementById('vmDelete').addEventListener('click', () => { const name = (document.getElementById('vmScriptList').value || '').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const s = loadScripts(); delete s[name]; saveScripts(s); populateScripts(); alert('Deleted ' + name); });
 
   // initial UI
-  populateUI();
+  refreshClips(); populateScripts();
 });
+
+// helpers used in handlers
+function populateScripts(){
+  const sel = document.getElementById('vmScriptList'); sel.innerHTML = '';
+  const scripts = loadScripts();
+  Object.keys(scripts).sort().forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o); });
+  if(sel.options.length) sel.value = sel.options[0].value;
+  loadScriptEditor();
+}
+function loadScriptEditor(){
+  const name = document.getElementById('vmScriptList').value; const scripts = loadScripts(); if(!name || !scripts[name]) return; const v = scripts[name];
+  document.getElementById('vmName').value = name; document.getElementById('vmTemplates').value = (v.templates || []).join('\n'); document.getElementById('vmPitch').value = v.pitch || 1.0; document.getElementById('vmRate').value = v.rate || 1.0;
+}
+
+// pitch estimate and audio helpers (same as before)
+async function estimatePitchFromAudioBuffer(audioBuffer){
+  try { const fs = audioBuffer.sampleRate; const ch = audioBuffer.getChannelData(0); const N = Math.min(ch.length, fs); const buf = ch.subarray(0,N); let best=0,bestOff=-1; for(let off=20; off<800; off++){ let s=0; for(let i=0;i<N-off;i++) s+=Math.abs(buf[i]-buf[i+off]); const val=1/(1+s); if(val>best){best=val;bestOff=off;} } if(bestOff<=0) return null; return fs / bestOff; } catch(e){ return null; }
+function audioBufferToWavBlob(buffer){ const numChannels = buffer.numberOfChannels; const sampleRate = buffer.sampleRate; const length = buffer.length * numChannels * 2 + 44; const ab = new ArrayBuffer(length); const view = new DataView(ab); let offset=0; function writeString(s){ for(let i=0;i<s.length;i++) view.setUint8(offset++, s.charCodeAt(i)); } writeString('RIFF'); view.setUint32(offset, 36 + buffer.length * numChannels * 2, true); offset+=4; writeString('WAVE'); writeString('fmt '); view.setUint32(offset, 16, true); offset+=4; view.setUint16(offset, 1, true); offset+=2; view.setUint16(offset, numChannels, true); offset+=2; view.setUint32(offset, sampleRate, true); offset+=4; view.setUint32(offset, sampleRate * numChannels * 2, true); offset+=4; view.setUint16(offset, numChannels * 2, true); offset+=2; view.setUint16(offset, 16, true); offset+=2; writeString('data'); view.setUint32(offset, buffer.length * numChannels * 2, true); offset+=4; for(let i=0;i<buffer.length;i++){ for(let ch=0; ch<numChannels; ch++){ let sample = buffer.getChannelData(ch)[i]; sample = Math.max(-1, Math.min(1, sample)); view.setInt16(offset, sample<0 ? sample*0x8000 : sample*0x7FFF, true); offset+=2; } } return new Blob([view], {type:'audio/wav'}); }
+function blobToDataURL(blob){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); }); }
+
 </script>
 </body>
 </html>
