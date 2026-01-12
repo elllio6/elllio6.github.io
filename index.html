@@ -3,218 +3,188 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FunnyImageAI — Expanded Predictions</title>
+  <title>FunnyImageAI — Maxed Predictions & Simple Controls</title>
 
   <!-- TensorFlow.js + MobileNet -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.9.0/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.2.1/dist/mobilenet.min.js"></script>
 
   <style>
-    :root{
-      --accent:#0b6df2;
-      --muted:#6b7280;
-      --bg:#f6f9ff;
-      --card:#fff;
-      --radius:10px;
-      --pad:14px;
+    :root {
+      --accent: #0b6df2;
+      --muted: #6b7280;
+      --bg: #f6f9ff;
+      --card: #fff;
+      --radius: 10px;
     }
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:var(--bg);color:#0f172a}
-    .wrap{max-width:1050px;margin:18px auto;padding:16px}
-    header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}
-    h1{margin:0;font-size:1.2rem}
-    .muted{color:var(--muted);font-size:0.95rem}
-    .grid{display:grid;grid-template-columns:1fr 360px;gap:16px}
-    @media (max-width:960px){ .grid{grid-template-columns:1fr} }
-    .card{background:var(--card);border-radius:var(--radius);padding:var(--pad);box-shadow:0 6px 18px rgba(12,18,36,0.06)}
-    .uploader{display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #e6eefc;border-radius:10px;padding:14px;background:linear-gradient(180deg,#fff,#fbfdff)}
-    .hidden{display:none}
-    img.preview{max-width:100%;border-radius:8px;margin-top:12px;display:block}
-    label{display:block;font-weight:700;margin-bottom:8px}
-    input[type="file"], input[type="text"], input[type="number"], select, textarea { width:100%; padding:8px; border-radius:8px; border:1px solid #e6eefc; background:#fff; box-sizing:border-box }
-    textarea{min-height:90px;resize:vertical}
-    button{padding:9px 12px;border-radius:8px;border:0;background:var(--accent);color:#fff;cursor:pointer;font-weight:600}
-    button.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
-    button.secondary{background:#6b7280}
-    .small{font-size:0.9rem;color:var(--muted)}
-    /* Removed artificial max-height so the list can show all lines returned by the model */
-    .pred-list{list-style:none;padding:0;margin:12px 0}
-    .pred-list li{padding:8px 6px;border-bottom:1px dashed #f1f5f9}
-    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .status{font-size:0.95rem;color:var(--muted)}
-    .clip-list a{margin-right:8px}
-    footer{margin-top:18px;color:var(--muted);text-align:center}
+    html,body { height:100%; margin:0; font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial; background:var(--bg); color:#0f172a; }
+    .wrap { max-width:1000px; margin:20px auto; padding:16px; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
+    h1 { margin:0; font-size:1.15rem; }
+    .muted { color:var(--muted); font-size:0.92rem; }
+    .card { background:var(--card); border-radius:10px; padding:14px; box-shadow:0 8px 20px rgba(12,18,36,0.06); margin-bottom:12px; }
+    .uploader { display:flex; gap:8px; align-items:center; }
+    input[type="file"] { display:none; }
+    button { padding:8px 12px; border-radius:8px; border:0; background:var(--accent); color:#fff; cursor:pointer; }
+    button.ghost { background:transparent; color:var(--accent); border:1px solid var(--accent); }
+    button.secondary { background:#6b7280; }
+    img.preview { display:block; max-width:100%; border-radius:8px; margin-top:10px; }
+    .small { font-size:0.9rem; color:var(--muted); }
+    .pred-list { list-style:none; padding:0; margin:8px 0; }
+    .pred-list li { padding:8px; border-bottom:1px dashed #eef4ff; cursor:pointer; }
+    .controls { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .inline { display:inline-flex; gap:8px; align-items:center; }
+    .search { width:100%; padding:8px; border-radius:8px; border:1px solid #e6eefc; box-sizing:border-box; margin-top:8px; }
+    .muted-block { color:var(--muted); margin-top:8px; }
+    footer { margin-top:16px; color:var(--muted); text-align:center; }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <div>
-        <h1>FunnyImageAI — Expanded Predictions</h1>
-        <div class="muted">Upload an image; the model now returns many more guesses and the UI shows them all.</div>
+        <h1>FunnyImageAI — Max Predictions</h1>
+        <div class="muted">Model returns up to 1000 ImageNet labels. Use search & "Show more" to explore.</div>
       </div>
       <div style="text-align:right">
         <div class="small">Points: <span id="pointsBadge">0</span></div>
         <div style="margin-top:8px">
           <button id="enableAudioBtn" class="ghost">Enable audio</button>
-          <div id="audioStatus" class="status">Audio: not enabled</div>
+          <div id="audioStatus" class="small" style="margin-top:6px">Audio: not enabled</div>
         </div>
       </div>
     </header>
 
-    <div class="grid">
-      <!-- Main column -->
-      <div>
-        <div class="card">
-          <label>Upload image (single slot)</label>
-          <div class="uploader" id="imageUploader" title="Click to choose image">
-            <input id="imageInput" type="file" accept="image/*">
-            <button id="pickImageBtn" class="ghost">Choose image</button>
-            <div class="small" style="margin-top:8px">Drag & drop or choose an image. Model will classify it (expanded results).</div>
-            <img id="imagePreview" class="preview hidden" alt="preview">
-          </div>
-
-          <div id="modelStatus" class="small" style="margin-top:12px">Loading MobileNet model...</div>
-
-          <div id="predictionsArea" class="hidden">
-            <label style="margin-top:12px">AI guesses (full list)</label>
-            <ul id="predList" class="pred-list"></ul>
-
-            <div class="controls">
-              <button id="speakBtn" class="ghost">Speak a guess now</button>
-              <button id="correctBtn">AI correct</button>
-              <button id="incorrectBtn" class="secondary">AI incorrect (save)</button>
-            </div>
-
-            <div id="labelSaveArea" class="hidden" style="margin-top:10px">
-              <input id="correctLabelInput" placeholder="Correct label (exact)">
-              <div class="controls" style="margin-top:8px">
-                <button id="saveLabelBtn">Save labeled image</button>
-                <button id="cancelSaveBtn" class="ghost">Cancel</button>
-              </div>
-            </div>
-
-            <hr style="margin:12px 0">
-
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <button id="startLoopBtn">Start auto-guesses</button>
-              <button id="stopLoopBtn" class="ghost hidden">Stop</button>
-              <div class="small">Delay</div>
-              <input id="minDelay" type="number" min="1" value="2" style="width:70px">
-              <div class="small">to</div>
-              <input id="maxDelay" type="number" min="1" value="5" style="width:70px">
-              <div id="loopStatus" class="status">Stopped</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="card" style="margin-top:12px">
-          <label>Saved clips / uploaded audio</label>
-          <div id="clipsArea" class="small">
-            <div id="clipList" class="clip-list" style="margin-top:8px"></div>
-          </div>
-        </div>
+    <div class="card">
+      <label style="font-weight:700">Image (single)</label>
+      <div class="uploader">
+        <input id="imageInput" type="file" accept="image/*">
+        <button id="chooseImage" class="ghost">Choose image</button>
+        <div class="small">Pick an image. Model will request the full set of ImageNet labels (1000).</div>
       </div>
+      <img id="preview" class="preview" style="display:none" alt="preview">
 
-      <!-- Right column -->
-      <div>
-        <div class="card">
-          <label>Upload audio for voice (recommended)</label>
-          <input id="audioInput" type="file" accept="audio/*" />
-          <div id="extractStatus" class="small" style="margin-top:8px"></div>
+      <div id="modelStatus" class="small" style="margin-top:10px">Model: loading...</div>
+
+      <div id="resultsCard" style="display:none; margin-top:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="searchInput" class="search" placeholder="Filter predictions (type to search) — click a label to speak it">
         </div>
 
-        <div class="card" style="margin-top:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <strong>Voice Maker</strong>
-            <span class="small muted">Templates use <code>{label}</code> and <code>{clip:name}</code></span>
+        <div class="muted-block">Showing <span id="shownCount">0</span> of <span id="totalCount">0</span> labels</div>
+
+        <ul id="predList" class="pred-list"></ul>
+
+        <div class="controls" style="margin-top:10px">
+          <button id="showMoreBtn" class="ghost">Show more</button>
+          <button id="speakTopBtn" class="ghost">Speak top</button>
+          <div class="inline">
+            <button id="startLoopBtn">Start auto</button>
+            <button id="stopLoopBtn" class="ghost" style="display:none">Stop</button>
+            <div class="small">Delay</div>
+            <input id="minDelay" type="number" value="2" min="1" style="width:60px">
+            <div class="small">to</div>
+            <input id="maxDelay" type="number" value="5" min="1" style="width:60px">
           </div>
+        </div>
 
-          <label style="margin-top:10px">Choose script</label>
-          <select id="vmScriptList"></select>
+        <div style="margin-top:12px" class="small muted">
+          Tip: use the search box to find any label quickly (substring match). You can also add custom labels below to include in auto-guess pool.
+        </div>
 
-          <label style="margin-top:8px">Script name</label>
-          <input id="vmName">
-
-          <label style="margin-top:8px">Templates (one per line)</label>
-          <textarea id="vmTemplates"></textarea>
-
-          <label style="margin-top:8px">Suggested pitch</label>
-          <input id="vmPitch" type="number" step="0.1" min="0" max="2" value="1.0">
-
-          <label style="margin-top:8px">Suggested rate</label>
-          <input id="vmRate" type="number" step="0.1" min="0.5" max="2" value="1.0">
-
-          <div style="display:flex;gap:8px;margin-top:10px">
-            <button id="vmSave">Save script</button>
-            <button id="vmNew" class="ghost">New</button>
-            <button id="vmDelete" class="secondary">Delete</button>
-          </div>
+        <div style="margin-top:12px">
+          <input id="customLabelInput" placeholder="Add custom label (press Add)" style="padding:8px;border-radius:8px;border:1px solid #e6eefc">
+          <button id="addCustomBtn" class="ghost">Add</button>
+          <div class="small muted" style="margin-top:6px">Custom labels are saved in your browser and included in auto-guess pool.</div>
         </div>
       </div>
     </div>
 
+    <div class="card">
+      <label style="font-weight:700">Audio clip (optional)</label>
+      <input id="audioInput" type="file" accept="audio/*">
+      <div id="audioStatusText" class="small" style="margin-top:8px"></div>
+    </div>
+
     <footer>
-      <div class="small muted">Want even more labels? I can raise the top-k request (MobileNet) further — tell me how many and I'll update it.</div>
+      Hosting & persistence: GitHub Pages (free) or Cloudflare Pages, Netlify, Vercel — all can host this static site and serve it indefinitely. See notes below.
     </footer>
   </div>
 
 <script>
-/* Expanded-predictions version:
-   - Requests topK = 100 predictions from MobileNet (more candidates)
-   - Shows the full returned list (no UI truncation)
-   - All core buttons wired and audio upload/speech behave as before
+/* Maxed predictions + simple UI
+   - MODEL_TOPK = 1000 to return all ImageNet labels
+   - Search box to filter; "Show more" lazy-load for performance
+   - Add custom labels stored in localStorage and included in auto-guess pool
+   - Simple TTS with "Enable audio" gesture for Safari
 */
 
-// Storage keys
-const SCRIPTS_KEY = 'funny_expanded_scripts_v1';
-const CLIPS_KEY = 'funny_expanded_clips_v1';
-const DATASET_KEY = 'funny_expanded_dataset_v1';
-const POINTS_KEY = 'funny_expanded_points_v1';
+const MODEL_TOPK = 1000; // request the full ImageNet label set from MobileNet
+const INITIAL_SHOW = 50; // number of labels shown initially; "Show more" adds this many
 
-// Defaults and helpers
-function defaultScripts(){ return {
-  "Shy": { templates: ["Um... I think this might be {label}."], pitch:1.0, rate:1.0 },
-  "Sarcastic": { templates: ["{label}? Yeah, right. Maybe."], pitch:1.0, rate:0.95 },
-  "Confident": { templates: ["I'm pretty sure this is {label}."], pitch:1.0, rate:1.1 }
-}; }
-function loadScripts(){ try { const raw = localStorage.getItem(SCRIPTS_KEY); return raw ? JSON.parse(raw) : defaultScripts(); } catch(e){ return defaultScripts(); } }
-function saveScripts(v){ localStorage.setItem(SCRIPTS_KEY, JSON.stringify(v)); }
-function loadClips(){ try { return JSON.parse(localStorage.getItem(CLIPS_KEY) || '{}'); } catch(e){ return {}; } }
-function saveClips(v){ localStorage.setItem(CLIPS_KEY, JSON.stringify(v)); }
-function loadDataset(){ try { return JSON.parse(localStorage.getItem(DATASET_KEY) || '{}'); } catch(e){ return {}; } }
-function saveDataset(v){ localStorage.setItem(DATASET_KEY, JSON.stringify(v)); }
-function loadPoints(){ return parseInt(localStorage.getItem(POINTS_KEY) || '0', 10); }
-function savePoints(n){ localStorage.setItem(POINTS_KEY, String(n)); document.getElementById('pointsBadge').textContent = n; }
+// DOM
+const chooseImageBtn = document.getElementById('chooseImage');
+const imageInput = document.getElementById('imageInput');
+const previewImg = document.getElementById('preview');
+const modelStatus = document.getElementById('modelStatus');
+const resultsCard = document.getElementById('resultsCard');
+const predList = document.getElementById('predList');
+const searchInput = document.getElementById('searchInput');
+const showMoreBtn = document.getElementById('showMoreBtn');
+const shownCountSpan = document.getElementById('shownCount');
+const totalCountSpan = document.getElementById('totalCount');
+const speakTopBtn = document.getElementById('speakTopBtn');
+const enableAudioBtn = document.getElementById('enableAudioBtn');
+const audioStatus = document.getElementById('audioStatus');
+const audioInput = document.getElementById('audioInput');
+const audioStatusText = document.getElementById('audioStatusText');
+const addCustomBtn = document.getElementById('addCustomBtn');
+const customLabelInput = document.getElementById('customLabelInput');
 
-// Model
+const startLoopBtn = document.getElementById('startLoopBtn');
+const stopLoopBtn = document.getElementById('stopLoopBtn');
+const minDelayInput = document.getElementById('minDelay');
+const maxDelayInput = document.getElementById('maxDelay');
+
+const STORAGE_CUSTOM = 'funny_custom_labels_v1';
+const STORAGE_CLIPS = 'funny_clips_v1';
+
 let net = null;
+let audioEnabled = false;
+let AVAILABLE_VOICES = [];
+let allPredictions = []; // array of [label, score]
+let filteredPredictions = []; // after search filter
+let showCount = INITIAL_SHOW;
+let autoRunning = false;
+let pool = [];
+let poolIndex = 0;
+let lastGuessed = null;
+
+// --- Model load ---
 async function loadModel(){
-  const s = document.getElementById('modelStatus');
-  s.textContent = 'Loading MobileNet model...';
+  modelStatus.textContent = 'Model: loading...';
   try {
     net = await mobilenet.load({version:2, alpha:1.0});
-    s.textContent = 'Model loaded.';
+    modelStatus.textContent = 'Model: ready';
   } catch(err){
-    s.textContent = 'Model load failed: ' + (err.message || err);
+    modelStatus.textContent = 'Model failed to load';
     console.error(err);
   }
 }
 
-// TTS
-let audioEnabled = false;
-let AVAILABLE_VOICES = [];
-function ensureVoicesLoaded(timeoutMs = 1500){
+// --- Audio / TTS ---
+function ensureVoicesLoaded(timeout = 1500){
   return new Promise(resolve => {
     const v = window.speechSynthesis.getVoices();
     if(v && v.length){ AVAILABLE_VOICES = v; return resolve(v); }
-    const onvoices = () => { const vv = window.speechSynthesis.getVoices(); AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onvoices); resolve(vv); };
-    window.speechSynthesis.addEventListener('voiceschanged', onvoices);
-    setTimeout(()=>{ const vv = window.speechSynthesis.getVoices() || []; AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onvoices); resolve(vv); }, timeoutMs);
+    const onv = () => { const vv = window.speechSynthesis.getVoices(); AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onv); resolve(vv); };
+    window.speechSynthesis.addEventListener('voiceschanged', onv);
+    setTimeout(()=>{ const vv = window.speechSynthesis.getVoices() || []; AVAILABLE_VOICES = vv; window.speechSynthesis.removeEventListener('voiceschanged', onv); resolve(vv); }, timeout);
   });
 }
-function pickVoiceIndex(){
-  for(let i=0;i<AVAILABLE_VOICES.length;i++){ const v = AVAILABLE_VOICES[i]; if(/en/i.test(v.lang) || /english/i.test(v.name)) return i; }
-  return AVAILABLE_VOICES.length ? 0 : null;
+function pickVoice(){
+  for(const v of AVAILABLE_VOICES){ if(/en/i.test(v.lang) || /english/i.test(v.name)) return v; }
+  return AVAILABLE_VOICES[0] || null;
 }
 async function speakText(text, rate=1.0, pitch=1.0){
   if(!audioEnabled) return;
@@ -223,239 +193,235 @@ async function speakText(text, rate=1.0, pitch=1.0){
   return new Promise(resolve => {
     try {
       const u = new SpeechSynthesisUtterance(String(text));
-      u.rate = Number.isFinite(rate) ? rate : 1.0;
-      u.pitch = Number.isFinite(pitch) ? pitch : 1.0;
-      const idx = pickVoiceIndex();
-      if(idx !== null && AVAILABLE_VOICES[idx]) u.voice = AVAILABLE_VOICES[idx];
+      u.rate = rate; u.pitch = pitch;
+      const v = pickVoice(); if(v) u.voice = v;
       u.onend = () => resolve();
       u.onerror = () => resolve();
       window.speechSynthesis.speak(u);
-    } catch(err){ console.warn(err); resolve(); }
+    } catch(e){
+      console.warn(e); resolve();
+    }
   });
 }
 
-// Playback & templates
-function playClipDataUrl(dataUrl){ return new Promise(res => { const a = new Audio(dataUrl); a.onended = ()=>res(); a.onerror = ()=>res(); a.play().catch(()=>res()); }); }
-function buildSequenceFromTemplate(template, label){
-  const seq = []; const rx = /\{clip:([^}]+)\}/g;
-  let last = 0, m;
-  while((m = rx.exec(template)) !== null){
-    const before = template.slice(last, m.index);
-    if(before.trim()) seq.push({type:'tts', text: before.replace(/\{label\}/g, label)});
-    seq.push({type:'clip', clip: m[1].trim()});
-    last = m.index + m[0].length;
+// --- Helpers for predictions UI ---
+function renderList(){
+  predList.innerHTML = '';
+  const list = filteredPredictions.slice(0, showCount);
+  for(const [label, score] of list){
+    const li = document.createElement('li');
+    li.innerHTML = `<strong>${escapeHtml(label)}</strong> — ${(score*100).toFixed(1)}%`;
+    li.addEventListener('click', async () => {
+      if(!audioEnabled){ alert('Tap "Enable audio" first to hear speech in Safari.'); return; }
+      await speakText(label);
+    });
+    predList.appendChild(li);
   }
-  const tail = template.slice(last);
-  if(tail.trim()) seq.push({type:'tts', text: tail.replace(/\{label\}/g, label)});
-  return seq;
+  shownCountSpan.textContent = Math.min(filteredPredictions.length, showCount);
+  totalCountSpan.textContent = filteredPredictions.length;
+  showMoreBtn.style.display = filteredPredictions.length > showCount ? '' : 'none';
 }
-async function playSequence(seq, rate=1.0, pitch=1.0){
-  for(const item of seq){
-    if(item.type === 'clip'){
-      const clips = loadClips();
-      const url = clips[item.clip];
-      if(url) await playClipDataUrl(url);
-      else await new Promise(r => setTimeout(r, 120));
-    } else {
-      const t = (item.text||'').trim();
-      if(t) await speakText(t, rate, pitch); else await new Promise(r => setTimeout(r,80));
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// --- Classify file and populate allPredictions ---
+async function classifyFile(file){
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.src = url;
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; });
+  previewImg.src = img.src; previewImg.style.display = '';
+  if(!net) await loadModel();
+  modelStatus.textContent = 'Classifying (may take a moment)...';
+  // request the full set of ImageNet labels
+  let results = [];
+  try {
+    results = await net.classify(img, MODEL_TOPK);
+  } catch(err){
+    console.error('classify error', err);
+    modelStatus.textContent = 'Classification error';
+    alert('Classification failed: ' + (err.message || err));
+    return;
+  }
+  modelStatus.textContent = 'Ready';
+  // results: [{className, probability}, ...]
+  allPredictions = results.map(r => [r.className, r.probability || 0]);
+  // mix in custom labels (score 0) so they appear in list and pool
+  const custom = loadCustomLabels();
+  for(const c of custom){
+    // avoid duplicates (case-insensitive)
+    if(!allPredictions.some(p => p[0].toLowerCase() === c.toLowerCase())){
+      allPredictions.push([c, 0]);
     }
   }
+  // apply a little variety if desired
+  allPredictions = applySmallBadness(allPredictions);
+  // initial filtered view is full list
+  filteredPredictions = allPredictions.slice();
+  showCount = INITIAL_SHOW;
+  renderList();
+  resultsCard.style.display = '';
 }
 
-// Guessing
-let lastPredictions = [];
-let loopRunning = false;
-let pool = [], poolIndex = 0, lastGuessed = null;
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
-function buildPool(preds){
+// --- Search/filter ---
+searchInput.addEventListener('input', () => {
+  const q = (searchInput.value || '').trim().toLowerCase();
+  if(!q){ filteredPredictions = allPredictions.slice(); }
+  else {
+    filteredPredictions = allPredictions.filter(p => p[0].toLowerCase().includes(q));
+  }
+  showCount = INITIAL_SHOW;
+  renderList();
+});
+
+// --- Show more ---
+showMoreBtn.addEventListener('click', () => {
+  showCount += INITIAL_SHOW;
+  renderList();
+});
+
+// --- Speak top ---
+speakTopBtn.addEventListener('click', async () => {
+  if(!allPredictions.length){ alert('Upload an image first'); return; }
+  if(!audioEnabled){ alert('Enable audio first'); return; }
+  const top = allPredictions[0][0];
+  await speakText(top);
+});
+
+// --- Enable audio ---
+enableAudioBtn.addEventListener('click', async () => {
+  audioEnabled = true;
+  audioStatus.textContent = 'Audio: enabled';
+  await ensureVoicesLoaded();
+  try { await speakText('Audio enabled'); } catch(e){ /* ignore */ }
+});
+
+// --- Custom labels (persisted) ---
+function loadCustomLabels(){ try { return JSON.parse(localStorage.getItem(STORAGE_CUSTOM) || '[]'); } catch(e){ return []; } }
+function saveCustomLabels(arr){ localStorage.setItem(STORAGE_CUSTOM, JSON.stringify(arr)); }
+
+addCustomBtn.addEventListener('click', () => {
+  const v = (customLabelInput.value || '').trim();
+  if(!v){ alert('Enter a label'); return; }
+  const arr = loadCustomLabels();
+  if(arr.some(x => x.toLowerCase() === v.toLowerCase())){ alert('Label already added'); return; }
+  arr.push(v);
+  saveCustomLabels(arr);
+  customLabelInput.value = '';
+  alert('Custom label added (will appear with next classification).');
+});
+
+// --- Auto-guess loop ---
+function buildPool(){
   const commons = ["banana","chair","shoe","cat","dog","tree","car","clock","bottle","cup","box","phone","book","person","building","flower","plant","hat","suitcase"];
-  const labels = preds.map(p => p[0]);
+  const labels = allPredictions.map(p => p[0]);
   const merged = labels.slice();
-  for(const c of commons){ if(!merged.includes(c) && merged.length < Math.max(150, labels.length + 20)) merged.push(c); }
+  for(const c of commons){ if(!merged.includes(c) && merged.length < 2000) merged.push(c); }
   return shuffle(merged);
 }
-function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]] } return a; }
 
-async function startAutoLoop(){
-  if(loopRunning) return;
-  if(!lastPredictions || lastPredictions.length === 0){ alert('Upload an image first'); return; }
+startLoopBtn.addEventListener('click', async () => {
+  if(!allPredictions.length){ alert('Upload an image first'); return; }
   if(!audioEnabled){ alert('Enable audio first'); return; }
-  pool = buildPool(lastPredictions); poolIndex = 0; loopRunning = true;
-  document.getElementById('startLoopBtn').classList.add('hidden'); document.getElementById('stopLoopBtn').classList.remove('hidden'); document.getElementById('loopStatus').textContent = 'Running';
-  while(loopRunning){
-    if(poolIndex >= pool.length){ pool = shuffle(pool.slice()); poolIndex = 0; }
-    let guess = pool[poolIndex++];
-    if(guess === lastGuessed && pool.length > 1) guess = pool[poolIndex++ % pool.length];
-    lastGuessed = guess;
-    const scriptName = document.getElementById('vmScriptList').value;
-    const script = loadScripts()[scriptName] || null;
-    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
-    const seq = buildSequenceFromTemplate(tpl, guess);
-    const pitch = script ? (script.pitch || 1.0) : 1.0;
-    const rate = script ? (script.rate || 1.0) : 1.0;
-    await playSequence(seq, rate, pitch);
-    if(!loopRunning) break;
-    const minD = Math.max(1, parseFloat(document.getElementById('minDelay').value) || 2);
-    const maxD = Math.max(minD, parseFloat(document.getElementById('maxDelay').value) || 5);
-    const delay = minD + Math.random() * (maxD - minD);
+  if(autoRunning) return;
+  pool = buildPool();
+  poolIndex = 0;
+  autoRunning = true;
+  startLoopBtn.style.display = 'none';
+  stopLoopBtn.style.display = '';
+  document.getElementById('loopStatus').textContent = 'Running';
+  while(autoRunning){
+    if(poolIndex >= pool.length) { pool = shuffle(pool.slice()); poolIndex = 0; }
+    let label = pool[poolIndex++];
+    if(label === lastGuessed && pool.length > 1) label = pool[poolIndex++ % pool.length];
+    lastGuessed = label;
+    const text = `I think this might be ${label}.`;
+    await speakText(text);
+    if(!autoRunning) break;
+    const minD = Math.max(1, Number(minDelayInput.value) || 2);
+    const maxD = Math.max(minD, Number(maxDelayInput.value) || 5);
+    const delay = minD + Math.random()*(maxD - minD);
     const start = Date.now();
-    while(loopRunning && Date.now() - start < delay*1000) await sleep(200);
+    while(autoRunning && Date.now() - start < delay*1000) await new Promise(r => setTimeout(r, 200));
   }
-  loopRunning = false;
-  document.getElementById('startLoopBtn').classList.remove('hidden'); document.getElementById('stopLoopBtn').classList.add('hidden'); document.getElementById('loopStatus').textContent = 'Stopped';
-}
-function stopAutoLoop(){ loopRunning = false; }
+  autoRunning = false;
+  startLoopBtn.style.display = '';
+  stopLoopBtn.style.display = 'none';
+  document.getElementById('loopStatus').textContent = 'Stopped';
+});
+stopLoopBtn.addEventListener('click', () => { autoRunning = false; });
 
-// Small playful badness applied to model outputs
-function applySmallBadness(preds){
+// --- Audio clip storage (simple) ---
+function loadClips(){ try { return JSON.parse(localStorage.getItem(STORAGE_CLIPS) || '{}'); } catch(e){ return {}; } }
+function saveClips(obj){ localStorage.setItem(STORAGE_CLIPS, JSON.stringify(obj)); }
+
+// --- Audio upload decoding (small) ---
+audioInput.addEventListener('change', async (ev) => {
+  const f = ev.target.files && ev.target.files[0]; if(!f) return;
+  audioStatusText.textContent = 'Decoding...';
+  try {
+    const arr = await f.arrayBuffer();
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const buf = await actx.decodeAudioData(arr.slice(0));
+    const blob = audioBufferToWavBlob(buf);
+    const url = await blobToDataURL(blob);
+    const name = (f.name || 'audio') + '_' + Date.now();
+    const clips = loadClips(); clips[name] = url; saveClips(clips); audioStatusText.textContent = `Saved clip "${name}"`;
+  } catch(err){
+    console.error(err); audioStatusText.textContent = 'Audio decode failed'; alert('Audio decode failed: ' + (err.message||err));
+  }
+});
+
+// --- Utility audio helpers ---
+function audioBufferToWavBlob(buffer){
+  const numChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const length = buffer.length * numChannels * 2 + 44;
+  const ab = new ArrayBuffer(length);
+  const view = new DataView(ab);
+  let offset = 0;
+  function writeString(s){ for(let i=0;i<s.length;i++) view.setUint8(offset++, s.charCodeAt(i)); }
+  writeString('RIFF'); view.setUint32(offset, 36 + buffer.length * numChannels * 2, true); offset += 4;
+  writeString('WAVE'); writeString('fmt '); view.setUint32(offset, 16, true); offset += 4;
+  view.setUint16(offset, 1, true); offset += 2;
+  view.setUint16(offset, numChannels, true); offset += 2;
+  view.setUint32(offset, sampleRate, true); offset += 4;
+  view.setUint32(offset, sampleRate * numChannels * 2, true); offset += 4;
+  view.setUint16(offset, numChannels * 2, true); offset += 2;
+  view.setUint16(offset, 16, true); offset += 2;
+  writeString('data'); view.setUint32(offset, buffer.length * numChannels * 2, true); offset += 4;
+  for(let i=0;i<buffer.length;i++){
+    for(let ch=0; ch<numChannels; ch++){
+      let sample = buffer.getChannelData(ch)[i];
+      sample = Math.max(-1, Math.min(1, sample));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+  return new Blob([view], {type:'audio/wav'});
+}
+function blobToDataURL(blob){ return new Promise((res,rej) => { const fr = new FileReader(); fr.onload = ()=>res(fr.result); fr.onerror = rej; fr.readAsDataURL(blob); }); }
+
+// --- small playful badness used earlier ---
+function applySmallBadness(preds){ 
   const commons = ["banana","chair","shoe","cat","dog","tree","car"];
   let out = preds.map(p => [p[0], Math.max(0.01, p[1] * 0.6)]);
   if(Math.random() < 0.25) out.unshift([commons[Math.floor(Math.random()*commons.length)], 0.08]);
   return out;
 }
 
-// UI helpers
-function renderPredictions(preds){
-  const ul = document.getElementById('predList'); ul.innerHTML = '';
-  for(const [label, score] of preds){
-    const li = document.createElement('li');
-    li.innerHTML = `<strong>${escapeHtml(label)}</strong> — ${(score*100).toFixed(1)}%`;
-    ul.appendChild(li);
-  }
-}
-function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-// Clips UI
-function refreshClips(){
-  const node = document.getElementById('clipList'); node.innerHTML = '';
-  const clips = loadClips(); const keys = Object.keys(clips).sort();
-  if(keys.length === 0){ node.innerHTML = '<div class="small muted">No clips</div>'; return; }
-  for(const k of keys){
-    const div = document.createElement('div');
-    div.innerHTML = `<strong>${escapeHtml(k)}</strong> — <a href="#" data-play="${k}">Play</a> <a href="#" data-del="${k}" style="color:#ef4444;margin-left:8px">Delete</a>`;
-    node.appendChild(div);
-  }
-  node.querySelectorAll('[data-play]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const k = a.getAttribute('data-play'); const url = loadClips()[k]; if(url) new Audio(url).play(); }));
-  node.querySelectorAll('[data-del]').forEach(a => a.addEventListener('click', e => { e.preventDefault(); const k = a.getAttribute('data-del'); if(!confirm('Delete '+k+'?')) return; const c = loadClips(); delete c[k]; saveClips(c); refreshClips(); }));
-}
-
-// Audio upload handling & pitch estimate
-document.addEventListener('DOMContentLoaded', async () => {
-  if(!localStorage.getItem(SCRIPTS_KEY)) saveScripts(defaultScripts());
-  refreshClips(); populateScripts();
-  loadModel();
-
-  // enable audio
-  document.getElementById('enableAudioBtn').addEventListener('click', async () => {
-    audioEnabled = true; document.getElementById('audioStatus').textContent = 'Audio: enabled'; await ensureVoicesLoaded(2000);
-    try { await speakText('Audio enabled', 1.0, 1.0); } catch(e){}
+// --- initialization ---
+(async function init(){
+  if(!localStorage.getItem(STORAGE_CUSTOM)) localStorage.setItem(STORAGE_CUSTOM, JSON.stringify([]));
+  await loadModel();
+  // wire choose image button
+  chooseImageBtn.addEventListener('click', () => imageInput.click());
+  imageInput.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    await classifyFile(f);
   });
-
-  // image upload
-  document.getElementById('pickImageBtn').addEventListener('click', () => document.getElementById('imageInput').click());
-  document.getElementById('imageInput').addEventListener('change', async (ev) => {
-    const f = ev.target.files && ev.target.files[0]; if(!f) return;
-    try {
-      const url = URL.createObjectURL(f);
-      const img = new Image(); img.src = url; await new Promise((res, rej)=>{ img.onload = res; img.onerror = rej; });
-      document.getElementById('imagePreview').src = img.src; document.getElementById('imagePreview').classList.remove('hidden');
-      stopAutoLoop();
-      if(!net) await loadModel();
-      document.getElementById('modelStatus').textContent = 'Classifying...';
-      // request many predictions (topK 100)
-      const raw = await net.classify(img, 100);
-      const preds = raw.map(r=>[r.className, r.probability || 0]);
-      lastPredictions = applySmallBadness(preds);
-      renderPredictions(lastPredictions);
-      document.getElementById('predictionsArea').classList.remove('hidden');
-      document.getElementById('modelStatus').textContent = 'Ready';
-    } catch(err){ console.error('image classify error', err); alert('Image error: ' + (err.message || err)); }
-  });
-
-  // speak now (random pick from expanded set)
-  document.getElementById('speakBtn').addEventListener('click', async () => {
-    if(!lastPredictions || lastPredictions.length === 0){ alert('No predictions yet'); return; }
-    if(!audioEnabled){ alert('Enable audio first'); return; }
-    const pick = lastPredictions[Math.floor(Math.random() * lastPredictions.length)][0];
-    const scriptName = document.getElementById('vmScriptList').value; const script = loadScripts()[scriptName] || null;
-    const tpl = script ? script.templates[Math.floor(Math.random()*script.templates.length)] : 'I think this is {label}.';
-    const seq = buildSequenceFromTemplate(tpl, pick); const pitch = script ? (script.pitch||1.0) : 1.0; const rate = script ? (script.rate||1.0) : 1.0;
-    await playSequence(seq, rate, pitch);
-  });
-
-  // start/stop
-  document.getElementById('startLoopBtn').addEventListener('click', startAutoLoop);
-  document.getElementById('stopLoopBtn').addEventListener('click', stopAutoLoop);
-
-  // correct / incorrect save
-  document.getElementById('correctBtn').addEventListener('click', () => { savePoints(loadPoints()+1); alert('Point awarded!'); });
-  document.getElementById('incorrectBtn').addEventListener('click', () => document.getElementById('labelSaveArea').classList.remove('hidden'));
-  document.getElementById('cancelSaveBtn').addEventListener('click', () => { document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value = ''; });
-  document.getElementById('saveLabelBtn').addEventListener('click', () => {
-    const label = (document.getElementById('correctLabelInput').value || '').trim(); if(!label){ alert('Enter a label'); return; }
-    const img = document.getElementById('imagePreview'); if(!img || img.classList.contains('hidden')){ alert('No image'); return; }
-    const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight; const ctx = canvas.getContext('2d'); ctx.drawImage(img,0,0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.9); const ds = loadDataset(); if(!ds[label]) ds[label]=[]; ds[label].push({data:dataUrl,t:Date.now()}); saveDataset(ds);
-    alert('Saved labeled image under: ' + label); document.getElementById('labelSaveArea').classList.add('hidden'); document.getElementById('correctLabelInput').value = '';
-  });
-
-  // audio upload
-  document.getElementById('audioInput').addEventListener('change', async (ev) => {
-    const f = ev.target.files && ev.target.files[0]; if(!f) return;
-    try {
-      document.getElementById('extractStatus').textContent = 'Decoding audio...';
-      const arr = await f.arrayBuffer();
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
-      const buffer = await actx.decodeAudioData(arr.slice(0));
-      const wavBlob = audioBufferToWavBlob(buffer);
-      const dataUrl = await blobToDataURL(wavBlob);
-      const name = (f.name || 'audio') + '_' + Date.now();
-      const clips = loadClips(); clips[name] = dataUrl; saveClips(clips);
-      refreshClips();
-      const pitchHz = await estimatePitchFromAudioBuffer(buffer);
-      let suggestedPitch = 1.0, suggestedRate = 1.0;
-      if(pitchHz && pitchHz>0){ const p = Math.max(80,Math.min(400,pitchHz)); const norm=(p-100)/(300-100); suggestedPitch=0.8 + Math.max(0,Math.min(1,norm))*0.7; suggestedRate=0.9 + Math.max(0,Math.min(1,norm))*0.3; }
-      document.getElementById('vmPitch').value = (Math.round(suggestedPitch*10)/10).toFixed(1);
-      document.getElementById('vmRate').value = (Math.round(suggestedRate*10)/10).toFixed(1);
-      document.getElementById('extractStatus').textContent = `Saved clip "${name}". Suggested pitch=${document.getElementById('vmPitch').value}, rate=${document.getElementById('vmRate').value}.`;
-      const scripts = loadScripts(); if(!scripts['AudioVoice']){ scripts['AudioVoice'] = { templates: [`{clip:${name}} I think this is {label}.`], pitch: suggestedPitch, rate: suggestedRate }; saveScripts(scripts); populateScripts(); }
-    } catch(err){ console.error('audio decode error', err); document.getElementById('extractStatus').textContent = 'Audio decode failed'; alert('Audio failed: ' + (err.message || err)); }
-  });
-
-  // script editor
-  document.getElementById('vmSave').addEventListener('click', () => {
-    const name = (document.getElementById('vmName').value || '').trim(); if(!name){ alert('Provide name'); return; }
-    const templates = (document.getElementById('vmTemplates').value || '').split('\n').map(s => s.trim()).filter(Boolean); if(templates.length === 0){ alert('Add at least one template'); return; }
-    const pitch = parseFloat(document.getElementById('vmPitch').value) || 1.0; const rate = parseFloat(document.getElementById('vmRate').value) || 1.0;
-    const s = loadScripts(); s[name] = { templates, pitch, rate }; saveScripts(s); populateScripts(); alert('Saved script: ' + name);
-  });
-  document.getElementById('vmNew').addEventListener('click', () => { document.getElementById('vmName').value='NewScript'; document.getElementById('vmTemplates').value='I think this is {label}.'; document.getElementById('vmPitch').value='1.0'; document.getElementById('vmRate').value='1.0'; });
-  document.getElementById('vmDelete').addEventListener('click', () => { const name = (document.getElementById('vmScriptList').value || '').trim(); if(!name) return; if(!confirm('Delete script "'+name+'"?')) return; const s = loadScripts(); delete s[name]; saveScripts(s); populateScripts(); alert('Deleted ' + name); });
-
-  // initial UI
-  refreshClips(); populateScripts();
-});
-
-// helpers used in handlers
-function populateScripts(){
-  const sel = document.getElementById('vmScriptList'); sel.innerHTML = '';
-  const scripts = loadScripts();
-  Object.keys(scripts).sort().forEach(name => { const o = document.createElement('option'); o.value = name; o.textContent = name; sel.appendChild(o); });
-  if(sel.options.length) sel.value = sel.options[0].value;
-  loadScriptEditor();
-}
-function loadScriptEditor(){
-  const name = document.getElementById('vmScriptList').value; const scripts = loadScripts(); if(!name || !scripts[name]) return; const v = scripts[name];
-  document.getElementById('vmName').value = name; document.getElementById('vmTemplates').value = (v.templates || []).join('\n'); document.getElementById('vmPitch').value = v.pitch || 1.0; document.getElementById('vmRate').value = v.rate || 1.0;
-}
-
-// pitch estimate and audio helpers (same as before)
-async function estimatePitchFromAudioBuffer(audioBuffer){
-  try { const fs = audioBuffer.sampleRate; const ch = audioBuffer.getChannelData(0); const N = Math.min(ch.length, fs); const buf = ch.subarray(0,N); let best=0,bestOff=-1; for(let off=20; off<800; off++){ let s=0; for(let i=0;i<N-off;i++) s+=Math.abs(buf[i]-buf[i+off]); const val=1/(1+s); if(val>best){best=val;bestOff=off;} } if(bestOff<=0) return null; return fs / bestOff; } catch(e){ return null; }
-function audioBufferToWavBlob(buffer){ const numChannels = buffer.numberOfChannels; const sampleRate = buffer.sampleRate; const length = buffer.length * numChannels * 2 + 44; const ab = new ArrayBuffer(length); const view = new DataView(ab); let offset=0; function writeString(s){ for(let i=0;i<s.length;i++) view.setUint8(offset++, s.charCodeAt(i)); } writeString('RIFF'); view.setUint32(offset, 36 + buffer.length * numChannels * 2, true); offset+=4; writeString('WAVE'); writeString('fmt '); view.setUint32(offset, 16, true); offset+=4; view.setUint16(offset, 1, true); offset+=2; view.setUint16(offset, numChannels, true); offset+=2; view.setUint32(offset, sampleRate, true); offset+=4; view.setUint32(offset, sampleRate * numChannels * 2, true); offset+=4; view.setUint16(offset, numChannels * 2, true); offset+=2; view.setUint16(offset, 16, true); offset+=2; writeString('data'); view.setUint32(offset, buffer.length * numChannels * 2, true); offset+=4; for(let i=0;i<buffer.length;i++){ for(let ch=0; ch<numChannels; ch++){ let sample = buffer.getChannelData(ch)[i]; sample = Math.max(-1, Math.min(1, sample)); view.setInt16(offset, sample<0 ? sample*0x8000 : sample*0x7FFF, true); offset+=2; } } return new Blob([view], {type:'audio/wav'}); }
-function blobToDataURL(blob){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(blob); }); }
-
+})();
 </script>
 </body>
 </html>
